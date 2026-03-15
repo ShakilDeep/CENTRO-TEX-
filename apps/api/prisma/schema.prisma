@@ -1,0 +1,249 @@
+// Prisma Schema for Centro Sample Tracking System
+// Phase 1 — Sample Lifecycle with RFID
+// SQLite compatible — enums as String
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────
+// Users — RBAC with 3 roles
+// ─────────────────────────────────────────────
+model Users {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  name          String
+  password_hash String
+  role          String   // MERCHANDISER, DISPATCH, ADMIN
+  is_active     Boolean  @default(true)
+  mfa_enabled   Boolean  @default(false)
+  mfa_secret    String?
+  mfa_backup_codes String?
+  token_version Int      @default(1)
+  login_attempts Int     @default(0)
+  locked_until  DateTime?
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+
+  // Relations
+  created_samples     Samples[]          @relation("SampleCreator")
+  owned_samples       Samples[]          @relation("SampleOwner")
+  movements           SampleMovements[]
+  transfers_sent      SampleTransfers[]  @relation("TransferFrom")
+  transfers_received  SampleTransfers[]  @relation("TransferTo")
+  notifications       Notifications[]
+  refresh_tokens      RefreshTokens[]
+  password_reset_tokens PasswordResetTokens[]
+
+  @@map("users")
+}
+
+// ─────────────────────────────────────────────
+// RefreshTokens — JWT refresh token tracking
+// ─────────────────────────────────────────────
+model RefreshTokens {
+  id             String    @id @default(cuid())
+  user_id        String
+  token_hash     String    @unique
+  family_id      String
+  device_id      String?
+  ip_address     String?
+  user_agent     String?
+  expires_at     DateTime
+  issued_at      DateTime  @default(now())
+  is_revoked     Boolean   @default(false)
+  revoked_at     DateTime?
+  replaced_by_id String?
+
+  user       Users          @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  replaces   RefreshTokens? @relation("TokenReplacement", fields: [replaced_by_id], references: [id])
+  replaced_by RefreshTokens[] @relation("TokenReplacement")
+
+  @@map("refresh_tokens")
+  @@index([user_id])
+  @@index([token_hash])
+  @@index([expires_at])
+  @@index([family_id])
+}
+
+// ─────────────────────────────────────────────
+// Buyers — Master data for buyer dropdown
+// ─────────────────────────────────────────────
+model Buyers {
+  id         String    @id @default(cuid())
+  name       String    @unique
+  code       String?   @unique
+  is_active  Boolean   @default(true)
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+
+  samples    Samples[]
+
+  @@map("buyers")
+}
+
+// ─────────────────────────────────────────────
+// RFID Tags — EPC tag lifecycle
+// ─────────────────────────────────────────────
+model RfidTags {
+  epc               String    @id           // Unique EPC code
+  status            String    @default("AVAILABLE") // AVAILABLE, ACTIVE
+  current_sample_id String?   @unique       // Only one active sample per tag
+  last_assigned_at  DateTime?
+  last_freed_at     DateTime?
+  created_at        DateTime  @default(now())
+
+  current_sample    Samples?  @relation(fields: [current_sample_id], references: [id])
+
+  @@map("rfid_tags")
+  @@index([status])
+}
+
+// ─────────────────────────────────────────────
+// Storage Locations — Rack → Shelf → Bin
+// ─────────────────────────────────────────────
+model StorageLocations {
+  id                   String    @id @default(cuid())
+  rack                 String
+  shelf                String
+  bin_id               String
+  max_capacity         Int
+  current_count        Int       @default(0)
+  sample_type_affinity String?   // Preferred sample type for grouping
+  is_active            Boolean   @default(true)
+  created_at           DateTime  @default(now())
+  updated_at           DateTime  @updatedAt
+
+  samples              Samples[]
+
+  @@unique([rack, shelf, bin_id])
+  @@map("storage_locations")
+}
+
+// ─────────────────────────────────────────────
+// Samples — Core entity
+// ─────────────────────────────────────────────
+model Samples {
+  id                  String    @id @default(cuid())
+  sample_id           String    @unique       // SMP-YYYYMMDD-XXXX
+  buyer_id            String
+  sample_type         String                  // Proto, Fit, PP, Shipment, etc.
+  description         String
+  photo_url           String?
+  created_by          String
+  current_status      String    @default("IN_TRANSIT_TO_DISPATCH")
+  current_owner_id    String
+  rfid_epc            String?   @unique       // Linked EPC (nullable until tagged)
+  storage_location_id String?
+  is_locked           Boolean   @default(false) // True when DISPOSED
+  created_at          DateTime  @default(now())
+  updated_at          DateTime  @updatedAt
+
+  // Relations
+  buyer              Buyers             @relation(fields: [buyer_id], references: [id])
+  creator            Users              @relation("SampleCreator", fields: [created_by], references: [id])
+  current_owner      Users              @relation("SampleOwner", fields: [current_owner_id], references: [id])
+  rfid_tag           RfidTags?
+  storage_location   StorageLocations?  @relation(fields: [storage_location_id], references: [id])
+  movements          SampleMovements[]
+  transfers          SampleTransfers[]
+  notifications      Notifications[]
+
+  @@map("samples")
+  @@index([current_status])
+  @@index([current_owner_id])
+  @@index([buyer_id])
+  @@index([rfid_epc])
+}
+
+// ─────────────────────────────────────────────
+// Sample Movements — Append-only audit trail
+// ─────────────────────────────────────────────
+model SampleMovements {
+  id              String   @id @default(cuid())
+  sample_id       String
+  user_id         String
+  device_id       String?            // RFID scanner device ID
+  action_type     String             // CREATED, RECEIVED_AT_DISPATCH, RECEIVED_BY_MERCHANDISER, STORED, DISPOSED, TRANSFER_INITIATED, TRANSFER_ACCEPTED, TRANSFER_REJECTED
+  previous_status String
+  new_status      String
+  rfid_epc        String?            // EPC used during scan
+  notes           String?
+  timestamp       DateTime @default(now())
+
+  sample          Samples  @relation(fields: [sample_id], references: [id])
+  user            Users    @relation(fields: [user_id], references: [id])
+
+  @@map("sample_movements")
+  @@index([sample_id])
+  @@index([user_id])
+  @@index([timestamp])
+  @@index([action_type])
+}
+
+// ─────────────────────────────────────────────
+// Sample Transfers — Ownership transfer requests
+// ─────────────────────────────────────────────
+model SampleTransfers {
+  id           String    @id @default(cuid())
+  sample_id    String
+  from_user_id String
+  to_user_id   String
+  reason       String
+  status       String    @default("PENDING") // PENDING, ACCEPTED, REJECTED
+  resolved_at  DateTime?
+  created_at   DateTime  @default(now())
+
+  sample       Samples   @relation(fields: [sample_id], references: [id])
+  from_user    Users     @relation("TransferFrom", fields: [from_user_id], references: [id])
+  to_user      Users     @relation("TransferTo", fields: [to_user_id], references: [id])
+
+  @@map("sample_transfers")
+  @@index([sample_id])
+  @@index([to_user_id, status])
+}
+
+// ─────────────────────────────────────────────
+// Notifications — In-app alerts
+// ─────────────────────────────────────────────
+model Notifications {
+  id         String    @id @default(cuid())
+  user_id    String
+  sample_id  String?
+  type       String    // DISPATCH_RECEIVED, TRANSFER_REQUEST, TRANSFER_ACCEPTED, TRANSFER_REJECTED, SYSTEM
+  title      String
+  message    String
+  is_read    Boolean   @default(false)
+  read_at    DateTime?
+  created_at DateTime  @default(now())
+
+  user       Users     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  sample     Samples?  @relation(fields: [sample_id], references: [id], onDelete: Cascade)
+
+  @@map("notifications")
+  @@index([user_id, is_read])
+  @@index([user_id, created_at])
+}
+
+// ─────────────────────────────────────────────
+// PasswordResetTokens — Auth helper
+// ─────────────────────────────────────────────
+model PasswordResetTokens {
+  id         String    @id @default(cuid())
+  user_id    String
+  token_hash String    @unique
+  expires_at DateTime
+  created_at DateTime  @default(now())
+  used_at    DateTime?
+
+  user       Users     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@map("password_reset_tokens")
+  @@index([user_id])
+  @@index([token_hash])
+}

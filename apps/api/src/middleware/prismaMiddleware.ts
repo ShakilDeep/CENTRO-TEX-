@@ -1,7 +1,7 @@
 import { PrismaClient, Prisma } from '@prisma/client';
 import { SoftDeleteProhibitedError } from '../errors/prisma.errors';
 
-const PROTECTED_MODELS = ['Samples', 'Inventory', 'Approvals', 'Audit_Logs'] as const;
+const PROTECTED_MODELS = ['Samples', 'SampleMovements', 'Notifications'] as const;
 
 const PROTECTED_OPERATIONS = ['delete', 'deleteMany'] as const;
 

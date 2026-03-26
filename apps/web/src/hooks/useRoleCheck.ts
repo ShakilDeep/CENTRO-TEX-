@@ -1,36 +1,32 @@
 import { useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
-import { useUser, useAuth } from '@clerk/clerk-react';
 
+/**
+ * Role-checking hook using the custom SQLite-backed auth store.
+ * Provides granular permission helpers for UI-level access control.
+ */
 export const useRoleCheck = () => {
-  const { user: clerkUser, isLoaded: isUserLoaded } = useUser();
-  const { isLoaded: isAuthLoaded } = useAuth();
   const user = useAuthStore(state => state.user);
   const userRoles = useAuthStore(state => state.roles);
+  const isAuthenticated = useAuthStore(state => state.isAuthenticated);
 
-  // Derived loading state — true only when Clerk has fully resolved
-  const isLoaded = isAuthLoaded && isUserLoaded;
+  const isLoaded = true; // Custom auth is synchronous from Zustand
 
   const checkRole = useCallback((role: string): boolean => {
-    // 1. Clerk Authentication checks
-    if (clerkUser) {
-      // Superadmin fallback exceptions for local testing
-      const email = clerkUser.primaryEmailAddress?.emailAddress?.toLowerCase();
-      if (email === 'shakil.uddin@yahoo.com' || email === 'admin@centrotex.com') {
-        return true; // Superadmins inherently possess all queried roles
-      }
-
-      // Read from Clerk publicMetadata seamlessly
-      const clerkRole = clerkUser.publicMetadata?.role as string | undefined;
-      if (clerkRole && clerkRole.toLowerCase() === role.toLowerCase()) {
-        return true;
-      }
+    // Admin has implicit access to all roles
+    if (user?.role?.toUpperCase() === 'ADMIN') {
+      return true;
     }
 
-    // 2. Legacy authStore checks
-    return userRoles.includes(role) || user?.role === role;
-  }, [userRoles, user, clerkUser]);
+    // Check against the user's assigned role (case-insensitive)
+    if (user?.role && user.role.toUpperCase() === role.toUpperCase()) {
+      return true;
+    }
+
+    // Check against the roles array in the store
+    return userRoles.some(r => r.toUpperCase() === role.toUpperCase());
+  }, [userRoles, user]);
 
   const checkAnyRole = useCallback((roles: string[]): boolean => {
     return roles.some(role => checkRole(role));
@@ -46,19 +42,19 @@ export const useRoleCheck = () => {
 
   return useMemo(() => ({
     isLoaded,
-    isAdmin: () => checkRole('Admin'),
-    isManager: () => checkRole('Manager'),
-    isMerchandiser: () => checkRole('Merchandiser'),
-    canManageUsers: () => checkRole('Admin'),
-    canManageLocations: () => checkAnyRole(['Admin', 'Manager']),
-    canManageSamples: () => checkAnyRole(['Admin', 'Manager', 'Merchandiser']),
-    canApproveSamples: () => checkAnyRole(['Admin', 'Manager']),
-    canViewReports: () => checkAnyRole(['Admin', 'Manager']),
-    canDeleteSamples: () => checkRole('Admin'),
+    isAdmin: () => checkRole('ADMIN'),
+    isDispatch: () => checkRole('DISPATCH'),
+    isMerchandiser: () => checkRole('MERCHANDISER'),
+    canManageUsers: () => checkRole('ADMIN'),
+    canManageLocations: () => checkAnyRole(['ADMIN', 'DISPATCH']),
+    canManageSamples: () => checkAnyRole(['ADMIN', 'DISPATCH', 'MERCHANDISER']),
+    canApproveSamples: () => checkAnyRole(['ADMIN', 'DISPATCH']),
+    canViewReports: () => checkAnyRole(['ADMIN', 'DISPATCH']),
+    canDeleteSamples: () => checkRole('ADMIN'),
     checkRole,
     checkAnyRole,
     checkAllRoles,
-    canAccess
+    canAccess,
   }), [isLoaded, checkRole, checkAnyRole, checkAllRoles, canAccess]);
 };
 
@@ -66,11 +62,9 @@ export const useRequireRole = (requiredRoles: string[], requireAll: boolean = fa
   const { canAccess, isLoaded } = useRoleCheck();
   const navigate = useNavigate();
 
-  // Only evaluate access after Clerk has fully loaded user data
   const hasAccess = isLoaded ? canAccess(requiredRoles, requireAll) : null;
 
   const redirectIfNoAccess = useCallback(() => {
-    // Guard: never redirect while auth data is still loading
     if (!isLoaded) return;
     if (!hasAccess) {
       navigate(redirectTo, { replace: true });
@@ -82,7 +76,7 @@ export const useRequireRole = (requiredRoles: string[], requireAll: boolean = fa
     isLoaded,
     redirectIfNoAccess,
     requiredRoles,
-    requireAll
+    requireAll,
   };
 };
 

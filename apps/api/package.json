@@ -17,18 +17,15 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@azure/msal-node": "^3.8.8",
     "@fastify/cors": "^11.2.0",
     "@fastify/jwt": "^10.0.0",
     "@fastify/rate-limit": "^10.3.0",
     "@fastify/static": "^9.0.0",
     "@prisma/client": "^5.22.0",
     "bcrypt": "^6.0.0",
-    "bcryptjs": "^3.0.3",
     "better-sqlite3": "^12.6.2",
     "dotenv": "^17.3.1",
     "fastify": "^5.7.4",
-    "passport-azure-ad": "^4.3.5",
     "qrcode": "^1.5.4",
     "thirty-two": "^1.0.2"
   },

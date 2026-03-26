@@ -1,8 +1,9 @@
 import { Link } from 'react-router-dom';
 import { useState, useEffect, useMemo } from 'react';
-import { useUser } from '@clerk/clerk-react';
+import { useAuthStore } from '../stores/authStore';
 import { RoleBasedGuard, AdminOnly, ManagerOrAbove } from './RoleBasedGuard';
 import { useRoleCheck } from '../hooks/useRoleCheck';
+import { api } from '../api';
 
 interface Location {
   id: string;
@@ -37,9 +38,9 @@ interface Sample {
 
 const DashboardContent = () => {
   const { canManageSamples, canDeleteSamples, canApproveSamples } = useRoleCheck();
-  const { user: clerkUser } = useUser();
-  const userEmail = clerkUser?.primaryEmailAddress?.emailAddress || '';
-  const userId = clerkUser?.id || '';
+  const authUser = useAuthStore(state => state.user);
+  const userEmail = authUser?.email || '';
+  const userId = authUser?.id || '';
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [formData, setFormData] = useState({
@@ -246,26 +247,12 @@ const DashboardContent = () => {
     setError('');
 
     try {
-      const response = await fetch('/api/v1/samples', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-User-Email': userEmail,
-        },
-        body: JSON.stringify({
-          sample_type: formData.sample_type,
-          description: formData.description,
-          location_id: formData.location_id,
-          user_id: 'CLERK_AUTH'
-        })
+      await api.post('/api/v1/samples', {
+        sample_type: formData.sample_type,
+        description: formData.description,
+        location_id: formData.location_id,
+        user_id: userId
       });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to create sample');
-      }
-
-      await response.json();
       setIsModalOpen(false);
       setFormData({ sample_type: '', description: '', location_id: '' });
       await refreshSamples();
@@ -284,22 +271,11 @@ const DashboardContent = () => {
 
   const handleCheckin = async (sample: Sample) => {
     try {
-      const response = await fetch('/api/v1/inventory/checkin', {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-User-Email': userEmail,
-        },
-        body: JSON.stringify({
-          sampleId: sample.sample_id,
-          userId: 'CLERK_AUTH',
-          notes: 'Checked in from dashboard'
-        })
+      await api.patch('/api/v1/inventory/checkin', {
+        sampleId: sample.sample_id,
+        userId: userId,
+        notes: 'Checked in from dashboard'
       });
-
-      if (!response.ok) {
-        throw new Error('Failed to check in sample');
-      }
 
       await refreshSamples();
       setOpenMenuId(null);
@@ -313,24 +289,13 @@ const DashboardContent = () => {
     if (!selectedSample) return;
 
     try {
-      const response = await fetch('/api/v1/inventory/checkout', {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-User-Email': userEmail,
-        },
-        body: JSON.stringify({
-          sampleId: selectedSample.sample_id,
-          locationId: locationId,
-          userId: 'CLERK_AUTH',
-          status: 'WITH_BUYER',
-          notes: 'Checked out from dashboard'
-        })
+      await api.patch('/api/v1/inventory/checkout', {
+        sampleId: selectedSample.sample_id,
+        locationId: locationId,
+        userId: userId,
+        status: 'WITH_BUYER',
+        notes: 'Checked out from dashboard'
       });
-
-      if (!response.ok) {
-        throw new Error('Failed to check out sample');
-      }
 
       await refreshSamples();
       setCheckoutModalOpen(false);

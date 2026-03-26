@@ -26,7 +26,7 @@ class ApiClient {
 
   private constructor() {
     const baseURL = import.meta.env.DEV ? '' : (import.meta.env.VITE_API_BASE_URL || '');
-    console.log('[ApiClient] Initializing with baseURL:', baseURL);
+
 
     this.axiosInstance = axios.create({
       baseURL,
@@ -50,17 +50,16 @@ class ApiClient {
   private setupInterceptors(): void {
     this.axiosInstance.interceptors.request.use(
       (config: InternalAxiosRequestConfig) => {
-        console.log('[ApiClient] Request:', config.method?.toUpperCase(), (config.baseURL || '') + (config.url || ''));
         const { accessToken } = useAuthStore.getState();
         if (accessToken) {
           config.headers.Authorization = `Bearer ${accessToken}`;
-        } else {
-          config.headers.Authorization = `Bearer demo-token`;
         }
 
-        // Add hardware tracking header if present
-        const deviceId = localStorage.getItem('device_id') || 'HW-SCANNER-001';
-        config.headers['x-device-id'] = deviceId;
+        // Attach hardware device ID only when available
+        const deviceId = localStorage.getItem('device_id');
+        if (deviceId) {
+          config.headers['x-device-id'] = deviceId;
+        }
 
         return config;
       },

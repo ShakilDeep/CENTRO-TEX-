@@ -1,5 +1,5 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
-import { useAuth } from '@clerk/clerk-react';
+import { useAuthContext } from './contexts/AuthContext';
 import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
 import Admin from './pages/Admin';
@@ -8,14 +8,15 @@ import SampleDetails from './pages/SampleDetails';
 import Unauthorized from './pages/Unauthorized';
 import Dispatch from './pages/Dispatch';
 import Inventory from './pages/Inventory';
-import Header from './components/Header';
+import Login from './pages/Login';
+import ProtectedRoute from './components/ProtectedRoute';
 import ToastContainer from './components/ToastContainer';
 import './App.css';
 
 function App() {
-  const { isLoaded, isSignedIn } = useAuth();
+  const { isAuthenticated, isLoading } = useAuthContext();
 
-  if (!isLoaded) {
+  if (isLoading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
@@ -28,41 +29,70 @@ function App() {
 
   return (
     <BrowserRouter>
-      {/* Only show the Clerk sign-in header when NOT signed in */}
-      {!isSignedIn && <Header />}
+      <Routes>
+        {/* Public route */}
+        <Route path="/login" element={<Login />} />
+        <Route path="/unauthorized" element={<Unauthorized />} />
 
-      {!isSignedIn ? (
-        <div className="flex items-center justify-center bg-gray-50 min-h-screen">
-          <div className="max-w-md w-full space-y-8 p-8">
-            <div className="text-center">
-              <h2 className="mt-6 text-3xl font-extrabold text-gray-900">
-                Welcome to প্রবাহ
-              </h2>
-              <p className="mt-4 text-sm text-gray-600">
-                Please use the Sign In button above to access your dashboard
-              </p>
-              <div className="mt-8">
-                <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-blue-100">
-                  <span className="text-3xl">📦</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      ) : (
-        <Routes>
-          <Route path="/" element={<Layout><Dashboard /></Layout>} />
-          <Route path="/dashboard" element={<Layout><Dashboard /></Layout>} />
-          <Route path="/dispatch" element={<Layout><Dispatch /></Layout>} />
-          <Route path="/inventory" element={<Layout><Inventory /></Layout>} />
-          <Route path="/samples/:id" element={<Layout><SampleDetails /></Layout>} />
-          <Route path="/admin" element={<Layout><Admin /></Layout>} />
-          <Route path="/reports" element={<Layout><Reports /></Layout>} />
-          <Route path="/unauthorized" element={<Unauthorized />} />
-        </Routes>
-      )}
+        {/* Protected routes */}
+        <Route
+          path="/"
+          element={
+            <ProtectedRoute>
+              <Layout><Dashboard /></Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/dashboard"
+          element={
+            <ProtectedRoute>
+              <Layout><Dashboard /></Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/dispatch"
+          element={
+            <ProtectedRoute>
+              <Layout><Dispatch /></Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/inventory"
+          element={
+            <ProtectedRoute>
+              <Layout><Inventory /></Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/samples/:id"
+          element={
+            <ProtectedRoute>
+              <Layout><SampleDetails /></Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin"
+          element={
+            <ProtectedRoute requiredRoles={['ADMIN']}>
+              <Layout><Admin /></Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/reports"
+          element={
+            <ProtectedRoute requiredRoles={['ADMIN', 'DISPATCH']} roleType="any">
+              <Layout><Reports /></Layout>
+            </ProtectedRoute>
+          }
+        />
+      </Routes>
 
-      {/* Global toast/notification renderer — always mounted */}
       <ToastContainer />
     </BrowserRouter>
   );

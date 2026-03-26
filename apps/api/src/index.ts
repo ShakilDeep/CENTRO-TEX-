@@ -2,7 +2,6 @@ import Fastify, { FastifyInstance } from 'fastify';
 import corsPlugin from './plugins/cors';
 import rateLimitPlugin from './plugins/rateLimit';
 import jwtPlugin from './plugins/jwt';
-import azureADPlugin from './plugins/azureAD';
 import authRoutes from './routes/auth';
 import samplesRoutes from './routes/samples';
 import dispatchRoutes from './routes/dispatch';
@@ -30,17 +29,6 @@ async function start() {
     await server.register(corsPlugin);
     await server.register(rateLimitPlugin);
     await server.register(jwtPlugin);
-
-    // Check if Azure AD config exists and is not placeholder before registering
-    const azureClientId = process.env.AZURE_AD_CLIENT_ID || '';
-    const azureTenantId = process.env.AZURE_AD_TENANT_ID || '';
-    const isRealAzureConfig = azureClientId && azureTenantId &&
-      !azureClientId.includes('your-azure') && !azureTenantId.includes('your-azure');
-    if (isRealAzureConfig) {
-      await server.register(azureADPlugin as any);
-    } else {
-      server.log.warn('Azure AD configuration missing. SSO plugin will not be registered.');
-    }
 
     // Register static file serving for frontend
     server.register(fastifyStatic, {

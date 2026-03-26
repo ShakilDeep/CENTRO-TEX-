@@ -5,7 +5,6 @@ import jwt from 'jsonwebtoken';
 import { TokenService } from './tokenService';
 import { IMFAStrategy } from './mfa/IMFAStrategy';
 import { TOTPStrategy } from './mfa/TOTPStrategy';
-import { AzureADService } from './azureADService';
 import { UserRole, TokenPair, UserData } from '../types/jwt';
 import {
   AuthenticationError,
@@ -63,12 +62,6 @@ export interface ChangePasswordDTO {
   newPassword: string;
 }
 
-export interface SSOExchangeRequest {
-  code: string;
-  state: string;
-  provider?: string;
-}
-
 export interface SSOTokenResponse {
   accessToken: string;
   refreshToken: string;
@@ -79,7 +72,6 @@ export interface SSOTokenResponse {
 export class AuthService {
   private tokenService: TokenService;
   private mfaStrategy: IMFAStrategy;
-  private azureADService: AzureADService;
   private readonly saltRounds = 12;
   private readonly maxLoginAttempts = 5;
   private readonly lockoutDurationMinutes = 15;
@@ -89,7 +81,6 @@ export class AuthService {
   constructor() {
     this.tokenService = new TokenService();
     this.mfaStrategy = new TOTPStrategy();
-    this.azureADService = new AzureADService();
   }
 
   async registerUser(data: RegisterDTO): Promise<UserData> {
@@ -441,72 +432,7 @@ export class AuthService {
     await this.logoutAllUserSessions(userId);
   }
 
-  async exchangeSSOToken(data: SSOExchangeRequest, ipAddress?: string, userAgent?: string): Promise<SSOTokenResponse> {
-    const { code, state, provider } = data;
 
-    if (!code || !state) {
-      throw new InvalidCredentialsError('SSO code and state are required');
-    }
-
-    let ssoUserData;
-
-    if (provider === 'azure' || provider === 'azure-ad') {
-      ssoUserData = await this.exchangeAzureADToken(code);
-    } else if (provider === 'office365' || provider === 'microsoft') {
-      ssoUserData = await this.exchangeOffice365Token(code);
-    } else {
-      ssoUserData = await this.exchangeGenericSSOToken(code, state);
-    }
-
-    if (!ssoUserData || !ssoUserData.email) {
-      throw new InvalidCredentialsError('Failed to retrieve user information from SSO provider');
-    }
-
-    let user = await prisma.users.findUnique({
-      where: { email: ssoUserData.email }
-    });
-
-    if (!user) {
-      user = await prisma.users.create({
-        data: {
-          email: ssoUserData.email,
-          name: ssoUserData.name || ssoUserData.email,
-          role: 'MERCHANDISER' as UserRole,
-          password_hash: await this.hashPassword(crypto.randomBytes(32).toString('hex')),
-          is_active: true
-        }
-      });
-    }
-
-    if (!user.is_active) {
-      throw new AuthenticationError('User account is inactive');
-    }
-
-    const userData = this.mapToUserData(user);
-    const tokenPair = await this.generateTokenPair(userData, ipAddress, userAgent);
-
-    return tokenPair;
-  }
-
-  private async exchangeAzureADToken(code: string): Promise<{ email: string; name?: string; department?: string }> {
-    if (!this.azureADService.isConfigured()) {
-      throw new AuthenticationError('Azure AD integration not yet configured. Please set up the Office 365 SSO Plugin.');
-    }
-
-    try {
-      return await this.azureADService.exchangeCodeForProfile(code);
-    } catch (error) {
-      throw new AuthenticationError(`Failed to exchange Azure AD token: ${(error as Error).message}`);
-    }
-  }
-
-  private async exchangeOffice365Token(code: string): Promise<{ email: string; name?: string; department?: string }> {
-    return this.exchangeAzureADToken(code);
-  }
-
-  private async exchangeGenericSSOToken(code: string, state: string): Promise<{ email: string; name?: string; department?: string }> {
-    throw new AuthenticationError('Generic SSO integration not yet configured. Please configure a specific SSO provider (azure, azure-ad, or office365).');
-  }
 
   async hashPassword(password: string): Promise<string> {
     return bcrypt.hash(password, this.saltRounds);

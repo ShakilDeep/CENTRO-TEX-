@@ -1,28 +1,57 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
-import { UserRole, AccessJwtPayload, TokenExpiredError, InvalidTokenError } from '../types/jwt';
+import { UserRole, AccessJwtPayload } from '../types/jwt';
 
+/**
+ * JWT authentication middleware.
+ * Verifies the access token and attaches decoded payload to request.user.
+ */
 export const authenticate = async (request: FastifyRequest, reply: FastifyReply): Promise<void> => {
-  // Phase 1 Demo: Skip fastify-jwt validation because frontend uses Clerk SSO.
-  request.user = {
-    id: 'cmm2krlqg0001eqrnn8ogba8z', // a dummy ID
-    email: 'admin@centrotex.com',
-    role: 'ADMIN',
-    permissions: []
-  } as unknown as AccessJwtPayload;
-  return;
-};
-
-export const authenticateOptional = async (request: FastifyRequest, reply: FastifyReply): Promise<void> => {
   try {
     await request.jwtVerify();
   } catch (err) {
+    reply.code(401).send({
+      error: 'Unauthorized',
+      message: 'Authentication required. Please log in.',
+    });
   }
 };
 
+/**
+ * Optional authentication — does not reject unauthenticated requests,
+ * but attaches user data to request.user if a valid token is present.
+ */
+export const authenticateOptional = async (request: FastifyRequest, reply: FastifyReply): Promise<void> => {
+  try {
+    await request.jwtVerify();
+  } catch (_err) {
+    // Silently continue — route is accessible without auth
+  }
+};
+
+/**
+ * Role-based authorization middleware factory.
+ * Returns a preHandler that checks if the authenticated user holds one
+ * of the specified roles.
+ */
 export const authorize = (allowedRoles: UserRole[]) => {
   return async (request: FastifyRequest, reply: FastifyReply): Promise<void> => {
-    // Phase 1 Demo: Allow all actions for smooth UI presentation.
-    return;
+    const user = request.user as AccessJwtPayload;
+
+    if (!user || !user.role) {
+      reply.code(403).send({
+        error: 'Forbidden',
+        message: 'Access denied. No role assigned.',
+      });
+      return;
+    }
+
+    if (!allowedRoles.includes(user.role as UserRole)) {
+      reply.code(403).send({
+        error: 'Forbidden',
+        message: `Access denied. Required role: ${allowedRoles.join(' or ')}.`,
+      });
+      return;
+    }
   };
 };
 
@@ -30,13 +59,15 @@ export const requireAdmin = authorize(['ADMIN']);
 export const requireDispatchOrAdmin = authorize(['ADMIN', 'DISPATCH']);
 export const requireMerchandiserOrAdmin = authorize(['ADMIN', 'MERCHANDISER']);
 
-// Helper for JWT actions
+/**
+ * Structured auth operation logger for security auditing.
+ */
 export const logAuthOperation = (
   operation: string,
   userId: string,
   email?: string,
   success: boolean = true,
-  error?: string
+  error?: string,
 ): void => {
   const logData = {
     level: success ? 'info' : 'error',
@@ -45,7 +76,7 @@ export const logAuthOperation = (
     email,
     success,
     error,
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
   };
 
   if (success) {

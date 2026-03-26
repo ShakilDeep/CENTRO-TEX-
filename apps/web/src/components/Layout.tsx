@@ -1,6 +1,6 @@
 import { Link, useLocation } from 'react-router-dom';
 import NotificationPanel from './NotificationPanel';
-import { useClerk } from '@clerk/clerk-react';
+import { useAuthContext } from '../contexts/AuthContext';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -8,29 +8,29 @@ interface LayoutProps {
 
 const Layout = ({ children }: LayoutProps) => {
   const location = useLocation();
-  const { signOut } = useClerk();
+  const { logout, user } = useAuthContext();
 
   const menuItems = [
     {
       name: 'Dashboard',
       path: '/',
-      icon: '📊'
+      icon: '📊',
     },
     {
       name: 'Dispatch Queue',
       path: '/dispatch',
-      icon: '🚚'
+      icon: '🚚',
     },
     {
       name: 'Storage View',
       path: '/inventory',
-      icon: '📦'
+      icon: '📦',
     },
     {
       name: 'Reports',
       path: '/reports',
-      icon: '📈'
-    }
+      icon: '📈',
+    },
   ];
 
   const isActive = (path: string) => {
@@ -48,7 +48,7 @@ const Layout = ({ children }: LayoutProps) => {
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 bg-[var(--primary)] rounded text-white flex items-center justify-center font-bold text-lg">P</div>
             <h1 className="font-bold text-xl tracking-tight text-[var(--primary)]">
-              প্রবাহ <span className="text-sm font-normal text-[var(--secondary)] ml-2">ADMIN</span>
+              প্রবাহ <span className="text-sm font-normal text-[var(--secondary)] ml-2">{user?.role || 'USER'}</span>
             </h1>
           </div>
         </div>
@@ -60,10 +60,11 @@ const Layout = ({ children }: LayoutProps) => {
               <Link
                 key={item.path}
                 to={item.path}
-                className={`flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium transition-colors ${isActive(item.path)
-                  ? 'bg-blue-50 text-blue-700 border-l-4 border-blue-600'
-                  : 'text-[var(--secondary)] hover:text-[var(--primary)] hover:bg-slate-50'
-                  }`}
+                className={`flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium transition-colors ${
+                  isActive(item.path)
+                    ? 'bg-blue-50 text-blue-700 border-l-4 border-blue-600'
+                    : 'text-[var(--secondary)] hover:text-[var(--primary)] hover:bg-slate-50'
+                }`}
               >
                 <span className="text-lg">{item.icon}</span>
                 <span>{item.name}</span>
@@ -78,10 +79,11 @@ const Layout = ({ children }: LayoutProps) => {
             </h3>
             <Link
               to="/admin"
-              className={`flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium transition-colors ${isActive('/admin')
-                ? 'bg-blue-50 text-blue-700 border-l-4 border-blue-600'
-                : 'text-[var(--secondary)] hover:text-[var(--primary)] hover:bg-slate-50'
-                }`}
+              className={`flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium transition-colors ${
+                isActive('/admin')
+                  ? 'bg-blue-50 text-blue-700 border-l-4 border-blue-600'
+                  : 'text-[var(--secondary)] hover:text-[var(--primary)] hover:bg-slate-50'
+              }`}
             >
               <span className="text-lg">👤</span>
               <span>Admin Panel</span>
@@ -89,10 +91,16 @@ const Layout = ({ children }: LayoutProps) => {
           </div>
         </nav>
 
-        {/* Logout Section */}
+        {/* User Info & Logout */}
         <div className="p-4 border-t border-[var(--border)] mt-auto">
+          {user && (
+            <div className="px-3 py-2 mb-2">
+              <p className="text-sm font-medium text-[var(--primary)] truncate">{user.name}</p>
+              <p className="text-xs text-[var(--secondary)] truncate">{user.email}</p>
+            </div>
+          )}
           <button
-            onClick={() => signOut()}
+            onClick={() => logout()}
             className="flex items-center gap-3 w-full px-3 py-3 rounded-lg text-sm font-medium transition-colors text-red-600 hover:bg-red-50 hover:text-red-700 focus:outline-none"
           >
             <span className="text-lg">🚪</span>
@@ -112,7 +120,6 @@ const Layout = ({ children }: LayoutProps) => {
           </div>
 
           <div className="flex items-center gap-4">
-            {/* Live notification bell — fetches from DB, updates every 30s */}
             <NotificationPanel />
           </div>
         </header>

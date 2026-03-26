@@ -1,4 +1,5 @@
 import { FastifyInstance } from 'fastify';
+import { prisma } from '../lib/prisma';
 import sampleLifecycleService from '../services/sampleLifecycleService';
 import { storeSampleSchema } from '../middleware/validation';
 import { AccessJwtPayload } from '../types/jwt';
@@ -19,7 +20,7 @@ export default async function storageRoutes(fastify: FastifyInstance) {
 
             return {
                 message: 'Sample stored successfully',
-                data: sample
+                data: sample,
             };
         } catch (error: any) {
             reply.code(400).send({ error: 'Bad Request', message: error.message });
@@ -31,11 +32,10 @@ export default async function storageRoutes(fastify: FastifyInstance) {
         preHandler: [fastify.authenticate]
     }, async (request, reply) => {
         const { sampleType } = request.query as { sampleType?: string };
-        const { prisma } = require('../lib/prisma');
 
         const allLocs = await prisma.storageLocations.findMany({
             where: { is_active: true },
-            orderBy: [{ rack: 'asc' }, { shelf: 'asc' }, { bin_id: 'asc' }]
+            orderBy: [{ rack: 'asc' }, { shelf: 'asc' }, { bin_id: 'asc' }],
         });
 
         const availableLocs = allLocs.filter((l: any) => l.current_count < l.max_capacity);
@@ -53,20 +53,19 @@ export default async function storageRoutes(fastify: FastifyInstance) {
     fastify.get('/locations', {
         preHandler: [fastify.authenticate]
     }, async (request, reply) => {
-        const { prisma } = require('../lib/prisma');
         const locs = await prisma.storageLocations.findMany({
             orderBy: [{ rack: 'asc' }, { shelf: 'asc' }, { bin_id: 'asc' }],
             include: {
                 samples: {
                     where: {
-                        current_status: 'IN_STORAGE'
+                        current_status: 'IN_STORAGE',
                     },
                     include: {
                         buyer: true,
-                        creator: true
-                    }
-                }
-            }
+                        creator: true,
+                    },
+                },
+            },
         });
         return { data: locs };
     });
@@ -77,21 +76,17 @@ export default async function storageRoutes(fastify: FastifyInstance) {
     }, async (request, reply) => {
         try {
             const { rack, shelf, bin_id, max_capacity, sample_type_affinity } = request.body as any;
-            const { prisma } = require('../lib/prisma');
-
-            const existingLocsCount = await prisma.storageLocations.count();
 
             const location = await prisma.storageLocations.create({
                 data: {
-                    id: String(existingLocsCount + 1),
                     rack,
                     shelf,
                     bin_id,
                     max_capacity: Number(max_capacity),
                     current_count: 0,
                     sample_type_affinity,
-                    is_active: true
-                }
+                    is_active: true,
+                },
             });
             return { message: 'Location created successfully', data: location };
         } catch (error: any) {
@@ -106,7 +101,6 @@ export default async function storageRoutes(fastify: FastifyInstance) {
         try {
             const { id } = request.params as { id: string };
             const body = request.body as any;
-            const { prisma } = require('../lib/prisma');
 
             if (body.max_capacity !== undefined) {
                 body.max_capacity = Number(body.max_capacity);
@@ -114,7 +108,7 @@ export default async function storageRoutes(fastify: FastifyInstance) {
 
             const location = await prisma.storageLocations.update({
                 where: { id },
-                data: body
+                data: body,
             });
             return { message: 'Location updated', data: location };
         } catch (error: any) {

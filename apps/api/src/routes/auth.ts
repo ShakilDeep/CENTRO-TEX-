@@ -1,5 +1,6 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { AuthService } from '../services/authService';
+import bcrypt from 'bcrypt';
 import { prisma } from '../lib/prisma';
 import { AccessJwtPayload } from '../types/jwt';
 import {
@@ -14,8 +15,7 @@ import {
 import {
   loginSchema,
   logoutSchema,
-  refreshTokenSchema,
-  ssoCallbackSchema
+  refreshTokenSchema
 } from '../middleware/validation';
 
 interface LoginBody {
@@ -32,11 +32,7 @@ interface RefreshTokenBody {
   refreshToken: string;
 }
 
-interface SSOCallbackBody {
-  code: string;
-  state: string;
-  provider?: string;
-}
+
 
 async function authRoutes(fastify: FastifyInstance) {
   const authService = new AuthService();
@@ -222,42 +218,7 @@ async function authRoutes(fastify: FastifyInstance) {
     }
   });
 
-  fastify.post<{ Body: SSOCallbackBody }>('/sso/callback', {
-    schema: {
-      body: ssoCallbackSchema
-    }
-  }, async (request, reply) => {
-    const { code, state, provider } = request.body;
 
-    const ipAddress = request.ip;
-    const userAgentHeader = request.headers['user-agent'];
-    const userAgent = Array.isArray(userAgentHeader) ? userAgentHeader.join(', ') : userAgentHeader;
-
-    try {
-      const result = await authService.exchangeSSOToken(
-        { code, state, provider },
-        ipAddress,
-        userAgent
-      );
-
-      return reply.status(200).send({
-        success: true,
-        data: {
-          accessToken: result.accessToken,
-          refreshToken: result.refreshToken,
-          expiresIn: result.expiresIn,
-          refreshExpiresIn: result.refreshExpiresIn
-        }
-      });
-    } catch (error) {
-      fastify.log.error(error);
-      return reply.status(401).send({
-        success: false,
-        error: 'sso_authentication_failed',
-        message: 'SSO authentication failed'
-      });
-    }
-  });
 
   // GET /api/v1/auth/users — List all users for Admin panel
   fastify.get('/users', async (request: FastifyRequest, reply: FastifyReply) => {
@@ -287,8 +248,7 @@ async function authRoutes(fastify: FastifyInstance) {
   }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const { name, email, role, office } = request.body as any;
-      const bcrypt = require('bcrypt');
-      const hashedPassword = await bcrypt.hash('password123', 12);
+      const hashedPassword = await authService.hashPassword('password123');
       const user = await prisma.users.create({
         data: {
           name,

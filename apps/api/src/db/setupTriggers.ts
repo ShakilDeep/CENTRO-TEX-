@@ -17,10 +17,10 @@ import { prisma } from '../lib/prisma';
  * Examples: trg_users_audit_insert, trg_audit_logs_protection_update
  */
 
-const dbPath = process.env.DATABASE_URL 
-  ? path.resolve(process.cwd(), process.env.DATABASE_URL.replace('file:', ''))
-  : path.join(__dirname, '../../prisma/data/centrotex_new.db');
-
+const dbPath = process.env.DATABASE_URL
+  ? path.resolve(process.cwd(), process.env.DATABASE_URL.replace('file:.', './prisma'))
+  : path.join(__dirname, '../../prisma/apps/api/data/centrotex.db');
+console.log(dbPath);
 /**
  * Helper function to execute SQL statements using better-sqlite3
  */

@@ -320,7 +320,7 @@ export default function Inventory() {
                     <th className="px-5 py-4 font-semibold">Identity & Details</th>
                     <th className="px-5 py-4 font-semibold">Ownership</th>
                     <th className="px-5 py-4 font-semibold">Location</th>
-                    <th className="px-5 py-4 font-semibold text-right">Stored Date</th>
+                    <th className="px-5 py-4 font-semibold text-right">Last Action & Time</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
@@ -411,15 +411,18 @@ export default function Inventory() {
                             </div>
                           </td>
 
-                          {/* Col 5: Date */}
+                          {/* Col 5: Last Action & Date */}
                           <td className="px-5 py-4 text-right">
                             <div className="flex flex-col items-end">
+                              <div className="text-[10px] font-bold text-gray-700 bg-gray-100 px-2 py-1 rounded-md mb-1 border border-gray-200">
+                                {sample.movements && sample.movements.length > 0 ? sample.movements[0].action_type.replace(/_/g, ' ') : sample.current_status.replace(/_/g, ' ')}
+                              </div>
                               <div className="flex items-center gap-1.5 text-sm font-medium text-gray-700">
                                 <Calendar className="w-3.5 h-3.5 text-gray-400" />
-                                {new Date(sample.updated_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
+                                {new Date(sample.movements?.[0]?.timestamp || sample.updated_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
                               </div>
                               <span className="text-xs text-gray-400 mt-0.5">
-                                {new Date(sample.updated_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
+                                {new Date(sample.movements?.[0]?.timestamp || sample.updated_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
                               </span>
                             </div>
                           </td>

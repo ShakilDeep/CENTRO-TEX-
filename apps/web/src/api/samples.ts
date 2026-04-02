@@ -9,6 +9,10 @@ export interface Sample {
   description: string;
   current_status: string;
   rfid_epc?: string;
+  sender_origin?: string;
+  receiver_name?: string;
+  purpose?: string;
+  assigned_merchandiser_id?: string;
   created_at: string;
   updated_at: string;
   created_by?: string;
@@ -60,6 +64,11 @@ export const samplesApi = {
 
   getMovements: async (id: string): Promise<ApiResponse<any[]>> => {
     const response = await api.get(`/api/v1/samples/${id}/movements`);
+    return response.data;
+  },
+
+  encode: async (id: string, rfid_epc: string): Promise<ApiResponse<Sample>> => {
+    const response = await api.post(`/api/v1/samples/${id}/encode`, { rfid_epc });
     return response.data;
   }
 };

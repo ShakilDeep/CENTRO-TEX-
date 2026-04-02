@@ -1,74 +1,93 @@
-# CENTRO TEX 2.0 - Operations Dashboard
-
+# CENTRO FLOW 2.0 - Operations Dashboard
 
 ## Overview
 
-CENTRO TEX 2.0 is a next-generation enterprise application built to handle high-throughput operations, sample tracking, RFID logistics, and secure organizational management. Designed with a decoupled architecture, it provides a lightning-fast React frontend backed by a robust, secure Node.js API ecosystem.
+CENTRO FLOW 2.0 is a high-performance enterprise application built to manage complex sample tracking, RFID logistics, secure storage, and real-time organizational workflows. Designed with a decoupled **Fastify + React** architecture, it provides a premium UI experience backed by a robust, secure Node.js API ecosystem.
 
 ---
 
-## Architecture & Code Standards
+## 🏗️ Architecture & Technical Stack
 
-This project utilizes a modern **Monorepo Architecture**, physically separating the `frontend (web)` and `backend (api)` into their respective workspace directories while maintaining a unified repository structure.
+The project utilizes a modern **Monorepo Architecture**, physically separating the `frontend (web)` and `backend (api)` into their respective workspace directories.
 
 ### Technology Stack
 *   **Frontend (`apps/web`)**
     *   **Core:** React 18 / Vite
-    *   **Styling:** Tailwind CSS (Utility-first) / Framer Motion
-    *   **Features:** Component-based UI, Client-side Routing, React Context API.
+    *   **Auth:** **Clerk (Managed Enterprise Identity Provider)**
+    *   **Styling:** Vanilla CSS / Framer Motion (Glassmorphism & Micro-animations)
+    *   **Queries:** TanStack React Query (SWR caching & mutations)
 *   **Backend (`apps/api`)**
     *   **Core:** Node.js / Fastify (Ultra-fast web framework)
-    *   **Database:** SQLite (Configured with WAL mode for concurrency)
-    *   **ORM:** Prisma ORM for declarative schema management.
-*   **Language:** Strict TypeScript is enforced across both environments to guarantee type safety, minimize runtime errors, and streamline developer experience.
-
-### Code Standards
-*   **RESTful APIs:** The backend adheres strictly to REST principles, utilizing standardized JSON responses, appropriate HTTP verbs, and versioned routing patterns (e.g., `/api/v1/`).
-*   **Modular Design:** Code is broken down into specific operational domains (Auth, RFID, Dispatch, Storage, Samples) for both UI components and API controllers.
-*   **Prisma Typing:** Frontend interfaces are strictly mapped to Prisma-generated database schema types to prevent data mismatch during rendering.
+    *   **Database:** SQLite (WAL mode enabled for high concurrency)
+    *   **ORM:** Prisma ORM for type-safe schema management.
+    *   **Types:** Strict TypeScript across the entire monorepo.
 
 ---
 
-## 🛡️ Security Measures & Anti-Hack Precautions
+## 🛡️ Security & Authentication Model (Phase 1 Demo)
 
-CENTRO TEX is built from the ground up prioritizing enterprise-grade security against external threats, exploits, and brute-force attacks.
+CENTRO FLOW 2.0 prioritizes a frictionless development and presentation experience while maintaining production-grade foundations.
 
-### 1. Identity & Access Management (Authentication)
-*   **JSON Web Tokens (JWT):** The API utilizes `@fastify/jwt` for stateless, signed session management. Tokens are cryptographically verified on every protected request.
-*   **Cryptographic Password Hashing:** User credentials are never stored in plaintext. They are salted and hashed using `bcrypt` (Blowfish cipher), rendering dictionary and rainbow-table attacks useless in the event of database exposure.
-*   **Enterprise SSO:** Native plugin integrations for Microsoft Azure Active Directory (`passport-azure-ad`) support delegated zero-trust token verification.
+### 1. Unified Identity (Clerk)
+The frontend uses **Clerk** as the single source of truth for identity management. This provides out-of-the-box support for Enterprise SSO, 2FA, and secure session handling.
 
-### 2. Network & Application Hardening
-*   **DDoS & Brute-Force Protection:** Native integration of `@fastify/rate-limit` throttles excessive requests spanning across the API, automatically locking out IPs attempting credential-stuffing or endpoint spam.
-*   **CORS Policies:** Strict Cross-Origin Resource Sharing (`@fastify/cors`) rules block unauthorized domains or malicious scripts operating in foreign browsers from querying the internal API.
+### 2. Backend Actor Model (Auto-Admin Injection)
+For the current **Phase 1 Demo**, the backend `authenticate` middleware is configured in **Demo Mode**:
+*   The API automatically identifies and injects an **Admin User** as the actor for all data operations.
+*   This ensures that while the frontend displays real-world user flows, the backend operations successfully clear Foreign Key (FK) constraints without requiring a complex multi-tenant setup during local prototyping.
 
-### 3. Database Integrity & Payload Security
-*   **SQL Injection (SQLi) Prevention:** The platform utilizes the Prisma ORM. Prisma internally utilizes parameterized queries and prepared statements exclusively. It is fundamentally immune to classic SQL injection attacks as user input is never concatenated into raw SQL strings.
-*   **Cross-Site Scripting (XSS) Mitigation:** The React framework inherently escapes and sanitizes variable outputs before altering the DOM structure, neutralizing injected JavaScript payloads sent by malicious actors.
+### 3. Database Security
+*   **SQL Injection (SQLi) Prevention:** Prisma ORM uses parameterized queries and prepared statements exclusively, neutralizing classic SQL injection attacks.
+*   **XSS Mitigation:** React's DOM rendering engine automatically sanitizes variable outputs, preventing malicious JavaScript execution.
 
 ---
 
-## Installation & Running the Application
+## 🔄 Core Operational Workflows
 
-### Prerequisites (All Operating Systems)
-Ensure your environment meets the following requirements before proceeding:
+### 1. Dispatch Receive (Decoupled RFID)
+*   Samples can be received at Dispatch with or without an RFID tag.
+*   **100% Validated Resolution:** We have decoupled the RFID encoding from the receive workflow, allowing samples to move through the pipeline even if the physical tags haven't been applied yet.
+
+### 2. Transfer Ownership (Resolved Workflow)
+*   Enables smooth transition of samples between Holders (e.g., Dispatch → Merchandiser).
+*   **Supported Statuses:** Transfers are supported from **AT_DISPATCH**, **WITH_MERCHANDISER**, and **IN_STORAGE**.
+*   **Dynamic RFID Verification:** If a sample has an RFID tag, a verification scan is enforced. If no tag exists, the system intelligently allows the transfer to bypass validation, preventing UI locks.
+
+### 3. Active Storage Placement
+*   Integrated "Suggest Location" logic based on Sample Type (Fit, Proto, Salesman, etc.).
+*   Real-time bin capacity tracking prevents over-filling of physical rack locations.
+
+---
+
+## ✅ Verified Bug Resolutions
+
+| Issue | Resolution | Component |
+|---|---|---|
+| **Action Failed: Failed to transfer sample** | Fixed status transition logic to allow transfers from `AT_DISPATCH`. | `apps/api/sampleLifecycleService.ts` |
+| **Mandatory RFID Blocking Transfers** | Made `rfid_epc` optional in API schemas for untagged items. | `apps/api/middleware/validation.ts` |
+| **Generic 'Action Failed' Toasts** | Updated frontend to correctly parse `.message` from API error responses. | `apps/web/src/pages/Dispatch.tsx` |
+
+---
+
+## 🚀 Installation & Setup
+
+### Prerequisites
 1.  **Node.js**: `v18.0.0` or higher.
-2.  **npm**: Package manager (comes with Node).
-3.  **Git**: For cloning the repository.
+2.  **npm / npx**: Standard package tools.
+3.  **Git**: For repository cloning.
 
 ### 🪟 Windows Deployment
 
-1. **Clone and Install:**
-    Open PowerShell or Command Prompt.
+1. **Install Dependencies:**
+    Open PowerShell in the root directory:
     ```powershell
-    git clone <repository-url>
-    cd "CENTRO TEX 2.0"
-    npm install
-    cd apps/api && npm install
-    cd ../web && npm install
+    # Install API dependencies
+    cd apps/api; npm install
+    # Install Web dependencies
+    cd ../web; npm install
     ```
 2. **One-Click Boot:**
-    Return to the root directory `CENTRO TEX 2.0`. We have included a PowerShell automation script that handles database initialization, Prisma generation, database seeding, and boots both servers simultaneously.
+    Use the included PowerShell automation script from the root directory. It handles database initialization, Prisma generation, seeding, and boots both servers simultaneously.
     ```powershell
     cd ../../
     .\start-dev.ps1
@@ -76,40 +95,19 @@ Ensure your environment meets the following requirements before proceeding:
 
 ### 🍎 macOS & 🐧 Linux Deployment
 
-1. **Clone and Install:**
-    Open Terminal.
-    ```bash
-    git clone <repository-url>
-    cd "CENTRO TEX 2.0"
-    npm install
-    cd apps/api && npm install
-    cd ../web && npm install
-    ```
-2. **Database Initialization:**
-    You must configure the SQLite database manually from the root directory.
+1. **Manual Initialization:**
     ```bash
     cd apps/api
     npx prisma generate
     npx prisma db push --accept-data-loss
     npx tsx prisma/seed.ts
     ```
-3. **Booting the Servers:**
-    To run the decoupled architecture, open two separate terminal windows.
+2. **Booting Servers (Two Terminals):**
+    *   **Terminal 1 (API):** `cd apps/api && npm run dev`
+    *   **Terminal 2 (Web):** `cd apps/web && npm run dev`
 
-    **Terminal Window 1 (API Server):**
-    ```bash
-    cd apps/api
-    npm run dev
-    ```
+---
 
-    **Terminal Window 2 (Web Client):**
-    ```bash
-    cd apps/web
-    npm run dev
-    ```
-
-### 🌐 Accessing the Dashboards
-
-Once your servers have initialized, you can access the platform locally in your browser:
-*   🖥️ **Web Interface:** `http://localhost:5173`
-*   ⚙️ **API Endpoint:** `http://localhost:3000`
+## 🌐 Endpoints
+*   🖥️ **Web Dashboard:** `http://localhost:5173`
+*   ⚙️ **API Gateway:** `http://localhost:3000`

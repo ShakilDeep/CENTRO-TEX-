@@ -45,37 +45,39 @@ export const ssoCallbackSchema = {
 
 export const createSampleSchema = {
   type: 'object',
-  required: ['buyer_id', 'sample_type', 'description'],
+  required: ['sample_type', 'description'],
   properties: {
-    buyer_id: { type: 'string', minLength: 1 },
+    buyer_id: { type: 'string' },
     sample_type: { type: 'string', minLength: 1 },
     description: { type: 'string' },
-    photo_url: { type: 'string' }
+    photo_url: { type: 'string' },
+    sender_origin: { type: 'string' },
+    receiver_name: { type: 'string' },
+    purpose: { type: 'string' }
   }
 };
 
 export const dispatchReceiveSchema = {
   type: 'object',
-  required: ['sender', 'rfid_epc'],
+  required: ['sender'],
   properties: {
     sender: { type: 'string', minLength: 1 },
-    rfid_epc: { type: 'string', minLength: 1 }
+    rfid_epc: { type: 'string' }
   }
 };
 
 export const merchandiserReceiveSchema = {
   type: 'object',
-  required: ['rfid_epc'],
   properties: {
-    rfid_epc: { type: 'string', minLength: 1 }
+    rfid_epc: { type: 'string' }
   }
 };
 
 export const storeSampleSchema = {
   type: 'object',
-  required: ['rfid_epc', 'location_id'],
+  required: ['location_id'],
   properties: {
-    rfid_epc: { type: 'string', minLength: 1 },
+    rfid_epc: { type: 'string' },
     location_id: { type: 'string', minLength: 1 } // UUID of storage_locations
   }
 };
@@ -92,9 +94,9 @@ export const disposeSampleSchema = {
 
 export const initiateTransferSchema = {
   type: 'object',
-  required: ['rfid_epc', 'to_user_id', 'reason'],
+  required: ['to_user_id', 'reason'],
   properties: {
-    rfid_epc: { type: 'string', minLength: 1 },
+    rfid_epc: { type: 'string' },
     to_user_id: { type: 'string', minLength: 1 },
     reason: { type: 'string', minLength: 1 }
   }

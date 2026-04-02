@@ -101,9 +101,9 @@ export default function Admin() {
   return (
     <div className="max-w-6xl mx-auto p-6 space-y-6">
       <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
-        Administration Context
+        System Administration
       </h1>
-      <p className="text-gray-500">Manage hardware provisions, tag availability, and overarching system settings.</p>
+      <p className="text-gray-500">Manage locations, users, and RFID tags.</p>
 
       {/* TABS */}
       <div className="flex bg-gray-100 p-1 rounded-xl w-max mt-6">

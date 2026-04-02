@@ -14,21 +14,21 @@ async function main() {
     const samples = await prisma.samples.findMany({
       take: 10,
       include: {
-        location: true,
-        inventory: true
+        buyer: true,
+        storage_location: true
       }
     });
     
     console.log('\nSamples in database:');
     samples.forEach(sample => {
       console.log(`- ${sample.sample_id}: ${sample.sample_type} (${sample.description})`);
-      console.log(`  Location: ${sample.location?.name || 'N/A'}`);
-      console.log(`  Status: ${sample.inventory?.[0]?.status || 'N/A'}`);
+      console.log(`  Buyer: ${sample.buyer?.name || 'N/A'}`);
+      console.log(`  Location: ${sample.storage_location ? `${sample.storage_location.rack}-${sample.storage_location.shelf}-${sample.storage_location.bin_id}` : 'N/A'}`);
     });
     
-    // Check locations
-    const locationsCount = await prisma.locations.count();
-    console.log(`\nTotal locations: ${locationsCount}`);
+    // Check StorageLocations
+    const locationsCount = await prisma.storageLocations.count();
+    console.log(`\nTotal storage locations: ${locationsCount}`);
     
     // Check users
     const usersCount = await prisma.users.count();

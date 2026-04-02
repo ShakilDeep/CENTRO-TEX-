@@ -4,7 +4,7 @@ import type { Sample } from './samples';
 
 export interface TransferInitiateRequest {
     to_user_id: string;
-    rfid_epc: string;
+    rfid_epc?: string;
     reason: string;
 }
 

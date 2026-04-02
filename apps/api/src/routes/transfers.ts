@@ -12,7 +12,7 @@ export default async function transferRoutes(fastify: FastifyInstance) {
         try {
             const user = request.user as AccessJwtPayload;
             const { id } = request.params as { id: string };
-            const { rfid_epc, to_user_id, reason } = request.body as { rfid_epc: string; to_user_id: string; reason: string };
+            const { rfid_epc, to_user_id, reason } = request.body as { rfid_epc?: string; to_user_id: string; reason: string };
             const deviceId = (request.headers['x-device-id'] as string) || undefined;
 
             const transfer = await sampleLifecycleService.initiateTransfer(id, user.id, to_user_id, rfid_epc, reason, deviceId);

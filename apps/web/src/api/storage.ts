@@ -15,7 +15,7 @@ export interface StorageLocation {
 }
 
 export interface StoreSampleRequest {
-    rfid_epc: string;
+    rfid_epc?: string;
     location_id: string;
 }
 

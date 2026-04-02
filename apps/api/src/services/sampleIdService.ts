@@ -44,6 +44,44 @@ class SampleIdService {
   }
 
   /**
+   * Generates a unique entry number in the format ENT-YYYY-XXXX
+   * YYYY is the current year. XXXX is a 4-digit sequence.
+   */
+  async generateEntryNumber(): Promise<string> {
+    const today = new Date();
+    const yearStr = today.getFullYear().toString();
+    const prefix = `ENT-${yearStr}-`;
+
+    const latestSample = await prisma.samples.findFirst({
+      where: {
+        entry_number: {
+          startsWith: prefix
+        }
+      },
+      orderBy: {
+        entry_number: 'desc'
+      }
+    });
+
+    let sequence = 1;
+
+    if (latestSample && latestSample.entry_number) {
+      const parts = latestSample.entry_number.split('-');
+      if (parts.length === 3) {
+        const lastSequenceStr = parts[2];
+        const lastSequence = parseInt(lastSequenceStr, 10);
+
+        if (!isNaN(lastSequence)) {
+          sequence = lastSequence + 1;
+        }
+      }
+    }
+
+    const paddedSequence = sequence.toString().padStart(4, '0');
+    return `${prefix}${paddedSequence}`;
+  }
+
+  /**
    * Validates if a format string matches the expected SMP-YYYYMMDD-XXXX pattern
    */
   isValidFormat(sampleId: string): boolean {

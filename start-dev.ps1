@@ -11,7 +11,7 @@ Set-Location "$PSScriptRoot\apps\api"
 
 # Step 1: Check database exists
 Write-Host "[1/6] Checking database..." -ForegroundColor Yellow
-$dbPath = ".\prisma\data\centrotex_new.db"
+$dbPath = ".\prisma\data\centrotex.db"
 if (-Not (Test-Path $dbPath)) {
     Write-Host "  ❌ Database not found at $dbPath" -ForegroundColor Red
     Write-Host "  Creating new database..." -ForegroundColor Yellow

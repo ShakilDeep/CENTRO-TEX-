@@ -140,6 +140,15 @@ model Samples {
   current_owner_id    String
   rfid_epc            String?   @unique       // Linked EPC (nullable until tagged)
   storage_location_id String?
+
+  // Step 1 additions
+  entry_number        String    @unique @default(cuid()) // ENT-2024-XXXX
+  sender_origin       String    @default("UNKNOWN")
+  receiver_name       String    @default("UNKNOWN")
+  purpose             String    @default("OTHER") // ORDER_CONFIRMATION, STORAGE, EVALUATION, OTHER
+  assigned_merchandiser_id String?
+  rfid_status         String    @default("NOT_LINKED") // NOT_LINKED, LINKED
+
   is_locked           Boolean   @default(false) // True when DISPOSED
   created_at          DateTime  @default(now())
   updated_at          DateTime  @updatedAt

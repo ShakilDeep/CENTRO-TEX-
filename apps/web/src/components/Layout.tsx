@@ -1,6 +1,7 @@
 import { Link, useLocation } from 'react-router-dom';
 import NotificationPanel from './NotificationPanel';
 import { useClerk } from '@clerk/clerk-react';
+import logoUrl from '../assets/logo.png';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -17,7 +18,7 @@ const Layout = ({ children }: LayoutProps) => {
       icon: '📊'
     },
     {
-      name: 'Dispatch Queue',
+      name: 'Dispatch',
       path: '/dispatch',
       icon: '🚚'
     },
@@ -46,9 +47,9 @@ const Layout = ({ children }: LayoutProps) => {
         {/* Logo/Header */}
         <div className="h-16 flex items-center px-6 border-b border-[var(--border)]">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 bg-[var(--primary)] rounded text-white flex items-center justify-center font-bold text-lg">P</div>
-            <h1 className="font-bold text-xl tracking-tight text-[var(--primary)]">
-              প্রবাহ <span className="text-sm font-normal text-[var(--secondary)] ml-2">ADMIN</span>
+            <img src={logoUrl} alt="CentroFlow Logo" className="w-8 h-8 object-contain" />
+            <h1 className="font-bold text-xl tracking-tight text-[var(--primary)] text-blue-600">
+              CentroFlow
             </h1>
           </div>
         </div>
@@ -74,7 +75,7 @@ const Layout = ({ children }: LayoutProps) => {
           {/* Configuration Section */}
           <div className="mt-8">
             <h3 className="px-3 text-xs font-semibold text-[var(--secondary)] uppercase tracking-wider mb-3">
-              CONFIGURATION
+              SYSTEM MANAGEMENT
             </h3>
             <Link
               to="/admin"
@@ -83,8 +84,8 @@ const Layout = ({ children }: LayoutProps) => {
                 : 'text-[var(--secondary)] hover:text-[var(--primary)] hover:bg-slate-50'
                 }`}
             >
-              <span className="text-lg">👤</span>
-              <span>Admin Panel</span>
+              <span className="material-symbols-outlined text-xl">settings</span>
+              <span>System Administration</span>
             </Link>
           </div>
         </nav>
@@ -107,7 +108,7 @@ const Layout = ({ children }: LayoutProps) => {
         <header className="bg-[var(--surface)] border-b border-[var(--border)] h-16 flex items-center justify-between px-6 shrink-0 z-20">
           <div className="flex items-center gap-8">
             <h2 className="font-semibold text-lg text-[var(--primary)]">
-              {isActive('/admin') ? 'Admin Panel' : (menuItems.find(item => isActive(item.path))?.name || 'Dashboard')}
+              {isActive('/admin') ? 'System Administration' : (menuItems.find(item => isActive(item.path))?.name || 'Dashboard')}
             </h2>
           </div>
 

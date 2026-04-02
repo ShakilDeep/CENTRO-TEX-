@@ -12,13 +12,16 @@ export default async function samplesRoutes(fastify: FastifyInstance) {
   }, async (request, reply) => {
     try {
       const user = request.user as AccessJwtPayload;
-      const { buyer_id, sample_type, description, photo_url } = request.body as any;
+      const { buyer_id, sample_type, description, photo_url, sender_origin, receiver_name, purpose } = request.body as any;
 
       const sample = await sampleLifecycleService.createSample({
         buyer_id,
         sample_type,
         description,
         photo_url,
+        sender_origin,
+        receiver_name,
+        purpose,
         created_by: user.id,
         device_id: (request.headers['x-device-id'] as string) || undefined
       });
@@ -129,6 +132,36 @@ export default async function samplesRoutes(fastify: FastifyInstance) {
       return { data: movements };
     } catch (error: any) {
       reply.code(400).send({ error: 'Failed to fetch movements', message: error.message });
+    }
+  });
+
+  // Encode RFID (New)
+  fastify.post('/:id/encode', {
+    preHandler: [fastify.authenticate, fastify.requireMerchandiserOrAdmin],
+    schema: {
+      body: {
+        type: 'object',
+        required: ['rfid_epc'],
+        properties: {
+          rfid_epc: { type: 'string', minLength: 1 }
+        }
+      }
+    }
+  }, async (request, reply) => {
+    try {
+      const user = request.user as AccessJwtPayload;
+      const { id } = request.params as { id: string };
+      const { rfid_epc } = request.body as { rfid_epc: string };
+      const deviceId = (request.headers['x-device-id'] as string) || undefined;
+
+      const sample = await sampleLifecycleService.encodeRfid(id, user.id, rfid_epc, deviceId);
+
+      return {
+        message: 'RFID tag encoded successfully',
+        data: sample
+      };
+    } catch (error: any) {
+      reply.code(400).send({ error: 'Bad Request', message: error.message });
     }
   });
 }

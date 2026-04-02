@@ -12,7 +12,7 @@ export default async function storageRoutes(fastify: FastifyInstance) {
         try {
             const user = request.user as AccessJwtPayload;
             const { id } = request.params as { id: string };
-            const { rfid_epc, location_id } = request.body as { rfid_epc: string; location_id: string };
+            const { rfid_epc, location_id } = request.body as { rfid_epc?: string; location_id: string };
             const deviceId = (request.headers['x-device-id'] as string) || undefined;
 
             const sample = await sampleLifecycleService.storeSample(id, user.id, rfid_epc, location_id, deviceId);
@@ -63,7 +63,11 @@ export default async function storageRoutes(fastify: FastifyInstance) {
                     },
                     include: {
                         buyer: true,
-                        creator: true
+                        creator: true,
+                        movements: {
+                            orderBy: { timestamp: 'desc' },
+                            take: 1
+                        }
                     }
                 }
             }

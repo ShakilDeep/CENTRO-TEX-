@@ -12,6 +12,7 @@ export default function Reports() {
   const [typeFilter, setTypeFilter] = useState('');
   const [buyerFilter, setBuyerFilter] = useState('');
   const [merchandiserFilter, setMerchandiserFilter] = useState('');
+  const [locationFilter, setLocationFilter] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
 
@@ -47,6 +48,7 @@ export default function Reports() {
     const matchesType = typeFilter ? s.sample_type === typeFilter : true;
     const matchesBuyer = buyerFilter ? (s as any).buyer_id === buyerFilter : true;
     const matchesMerch = merchandiserFilter ? (s as any).current_owner_id === merchandiserFilter : true;
+    const matchesLoc = locationFilter ? s.storage_location?.id === locationFilter : true;
 
     let matchesStartDate = true;
     let matchesEndDate = true;
@@ -59,7 +61,7 @@ export default function Reports() {
       matchesEndDate = new Date(s.created_at) <= end;
     }
 
-    return matchesSearch && matchesStatus && matchesType && matchesBuyer && matchesMerch && matchesStartDate && matchesEndDate;
+    return matchesSearch && matchesStatus && matchesType && matchesBuyer && matchesMerch && matchesLoc && matchesStartDate && matchesEndDate;
   });
 
   const exportToCSV = () => {
@@ -117,12 +119,12 @@ export default function Reports() {
 
       {viewMode === 'SAMPLES' && (
         <>
-          <div className="flex justify-between items-center mb-[-1rem]">
+          <div className="flex justify-between items-center mb-2">
             <h2 className="text-lg font-bold text-gray-800">Samples Report</h2>
-            <div className="flex gap-2">
+            <div className="flex items-center gap-2">
               <button
                 onClick={() => refetchSamples()}
-                className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-colors"
+                className="flex items-center justify-center p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-colors h-9 w-9"
                 title="Refresh"
               >
                 <RefreshCw className="w-5 h-5" />
@@ -130,7 +132,7 @@ export default function Reports() {
               <button
                 onClick={exportToCSV}
                 disabled={filteredSamples.length === 0}
-                className="flex items-center gap-2 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white px-4 py-2 rounded-xl text-sm font-medium shadow-sm transition-all active:scale-95 disabled:opacity-50"
+                className="flex items-center justify-center gap-2 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white px-4 h-9 rounded-xl text-sm font-medium shadow-sm transition-all active:scale-95 disabled:opacity-50"
               >
                 <Download className="w-4 h-4" /> Export CSV
               </button>
@@ -138,7 +140,7 @@ export default function Reports() {
           </div>
 
           {/* Filters */}
-          <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 gap-4 flex flex-col items-center">
+          <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 gap-4 flex flex-col">
 
             <div className="w-full flex flex-col md:flex-row gap-4">
               <div className="relative flex-1">
@@ -215,12 +217,24 @@ export default function Reports() {
                 onChange={(e) => setMerchandiserFilter(e.target.value)}
                 className="flex-1 min-w-[140px] px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500"
               >
-                <option value="">All Merchandisers</option>
+                <option value="">All Holders</option>
                 {usersList
-                  .filter((u: any) => u.role === 'MERCHANDISER' || u.role === 'ADMIN')
                   .map((u: any) => (
                     <option key={u.id} value={u.id}>{u.name || u.email}</option>
                   ))}
+              </select>
+
+              <select
+                value={locationFilter}
+                onChange={(e) => setLocationFilter(e.target.value)}
+                className="flex-1 min-w-[140px] px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">All Locations</option>
+                {locationsList.map((loc: any) => (
+                  <option key={loc.id} value={loc.id}>
+                    Rack {loc.rack} - Shelf {loc.shelf} - Bin {loc.bin_id}
+                  </option>
+                ))}
               </select>
             </div>
           </div>

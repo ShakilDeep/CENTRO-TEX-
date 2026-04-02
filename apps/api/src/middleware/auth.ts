@@ -1,15 +1,31 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
-import { UserRole, AccessJwtPayload, TokenExpiredError, InvalidTokenError } from '../types/jwt';
+import { UserRole, AccessJwtPayload } from '../types/jwt';
+import { prisma } from '../lib/prisma';
+
+async function getAdminUserId(): Promise<string> {
+  const admin = await prisma.users.findFirst({
+    where: { role: 'ADMIN', is_active: true },
+    select: { id: true }
+  });
+  if (!admin) throw new Error('No active admin user found in database. Please run seed.');
+  return admin.id;
+}
 
 export const authenticate = async (request: FastifyRequest, reply: FastifyReply): Promise<void> => {
-  // Phase 1 Demo: Skip fastify-jwt validation because frontend uses Clerk SSO.
-  request.user = {
-    id: 'cmm2krlqg0001eqrnn8ogba8z', // a dummy ID
-    email: 'admin@centrotex.com',
-    role: 'ADMIN',
-    permissions: []
-  } as unknown as AccessJwtPayload;
-  return;
+  // Phase 1 Demo: Clerk SSO is used on the frontend. The backend accepts all requests
+  // and injects the first admin user found in the DB as the current actor.
+  // This avoids FK constraint violations while supporting real data operations.
+  try {
+    const adminId = await getAdminUserId();
+    request.user = {
+      id: adminId,
+      email: 'admin@centrotex.com',
+      role: 'ADMIN',
+      permissions: []
+    } as unknown as AccessJwtPayload;
+  } catch (err) {
+    reply.code(503).send({ error: 'Service Unavailable', message: 'Database not initialized. Run: npm run db:seed' });
+  }
 };
 
 export const authenticateOptional = async (request: FastifyRequest, reply: FastifyReply): Promise<void> => {

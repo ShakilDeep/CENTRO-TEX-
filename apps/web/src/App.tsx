@@ -1,5 +1,5 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
-import { useAuth } from '@clerk/clerk-react';
+import { useAuth, SignedIn, SignedOut, SignInButton } from '@clerk/clerk-react';
 import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
 import Admin from './pages/Admin';
@@ -10,6 +10,7 @@ import Dispatch from './pages/Dispatch';
 import Inventory from './pages/Inventory';
 import Header from './components/Header';
 import ToastContainer from './components/ToastContainer';
+import logoUrl from './assets/logo.png';
 import './App.css';
 
 function App() {
@@ -28,30 +29,44 @@ function App() {
 
   return (
     <BrowserRouter>
-      {/* Only show the Clerk sign-in header when NOT signed in */}
-      {!isSignedIn && <Header />}
-
-      {!isSignedIn ? (
-        <div className="flex items-center justify-center bg-gray-50 min-h-screen">
-          <div className="max-w-md w-full space-y-8 p-8">
-            <div className="text-center">
-              <h2 className="mt-6 text-3xl font-extrabold text-gray-900">
-                Welcome to প্রবাহ
-              </h2>
-              <p className="mt-4 text-sm text-gray-600">
-                Please use the Sign In button above to access your dashboard
-              </p>
-              <div className="mt-8">
-                <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-blue-100">
-                  <span className="text-3xl">📦</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      ) : (
+      <Header />
+      
+      <main className="flex-grow">
         <Routes>
-          <Route path="/" element={<Layout><Dashboard /></Layout>} />
+          <Route path="/" element={
+            <>
+              <SignedIn>
+                <Layout>
+                  <Dashboard />
+                </Layout>
+              </SignedIn>
+              <SignedOut>
+                <div className="flex items-center justify-center bg-gray-50 min-h-[calc(100vh-64px)]">
+                  <div className="max-w-md w-full space-y-8 p-8 text-center bg-white rounded-2xl shadow-xl border border-gray-100">
+                    <div className="flex justify-center mb-6">
+                      <img src={logoUrl} alt="CentroFlow Logo" className="w-24 h-24 object-contain" />
+                    </div>
+                    <h2 className="text-4xl font-extrabold text-gray-900 tracking-tight">
+                      Welcome to CentroFlow
+                    </h2>
+                    <p className="mt-4 text-lg text-gray-600">
+                      The next-generation operations dashboard.
+                    </p>
+                    <div className="mt-8 flex justify-center space-x-4">
+                      <SignedOut>
+                        <SignInButton mode="modal">
+                          <button className="px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition">
+                            Sign In
+                          </button>
+                        </SignInButton>
+                      </SignedOut>
+                    </div>
+                  </div>
+                </div>
+              </SignedOut>
+            </>
+          } />
+          
           <Route path="/dashboard" element={<Layout><Dashboard /></Layout>} />
           <Route path="/dispatch" element={<Layout><Dispatch /></Layout>} />
           <Route path="/inventory" element={<Layout><Inventory /></Layout>} />
@@ -60,9 +75,8 @@ function App() {
           <Route path="/reports" element={<Layout><Reports /></Layout>} />
           <Route path="/unauthorized" element={<Unauthorized />} />
         </Routes>
-      )}
+      </main>
 
-      {/* Global toast/notification renderer — always mounted */}
       <ToastContainer />
     </BrowserRouter>
   );

@@ -6,22 +6,30 @@ export class SampleLifecycleService {
      * Generates sample, sets initial status to IN_TRANSIT_TO_DISPATCH
      */
     async createSample(data: {
-        buyer_id: string;
+        buyer_id?: string;
         sample_type: string;
         description: string;
         photo_url?: string;
+        sender_origin?: string;
+        receiver_name?: string;
+        purpose?: string;
         created_by: string; // User ID
         device_id?: string;
     }) {
         const nextSampleId = await sampleIdService.generateSampleId();
+        const nextEntryNumber = await sampleIdService.generateEntryNumber();
 
         return prisma.$transaction(async (tx) => {
             const sample = await tx.samples.create({
                 data: {
                     sample_id: nextSampleId,
-                    buyer_id: data.buyer_id,
+                    entry_number: nextEntryNumber,
+                    buyer_id: data.buyer_id || '',
                     sample_type: data.sample_type,
                     description: data.description,
+                    sender_origin: data.sender_origin,
+                    receiver_name: data.receiver_name,
+                    purpose: data.purpose,
                     photo_url: data.photo_url,
                     created_by: data.created_by,
                     current_status: 'IN_TRANSIT_TO_DISPATCH',
@@ -98,30 +106,33 @@ export class SampleLifecycleService {
     }
 
     // 1. Dispatch Receive
-    async dispatchReceive(sampleId: string, dispatchUserId: string, rfidEpc: string, sender: string, deviceId?: string) {
+    async dispatchReceive(sampleId: string, dispatchUserId: string, rfidEpc: string | undefined, sender: string, deviceId?: string) {
         return prisma.$transaction(async (tx) => {
             const sample = await tx.samples.findUnique({ where: { id: sampleId } });
             if (!sample) throw new Error('Sample not found');
             if (sample.current_status !== 'IN_TRANSIT_TO_DISPATCH') throw new Error('Invalid status transition');
 
-            // Check if tag is available
-            const rfidTag = await tx.rfidTags.findUnique({ where: { epc: rfidEpc } });
-            if (rfidTag?.status === 'ACTIVE') throw new Error('RFID tag is already active on another sample');
+            // If RFID EPC is provided, validate and update
+            if (rfidEpc) {
+                const rfidTag = await tx.rfidTags.findUnique({ where: { epc: rfidEpc } });
+                if (rfidTag?.status === 'ACTIVE' && rfidTag.current_sample_id !== sampleId) {
+                    throw new Error('RFID tag is already active on another sample');
+                }
+
+                await tx.rfidTags.upsert({
+                    where: { epc: rfidEpc },
+                    update: { status: 'ACTIVE', current_sample_id: sampleId, last_assigned_at: new Date() },
+                    create: { epc: rfidEpc, status: 'ACTIVE', current_sample_id: sampleId, last_assigned_at: new Date() }
+                });
+            }
 
             // Update Sample
             const updated = await tx.samples.update({
                 where: { id: sampleId },
                 data: {
                     current_status: 'AT_DISPATCH',
-                    rfid_epc: rfidEpc
+                    ...(rfidEpc ? { rfid_epc: rfidEpc } : {})
                 }
-            });
-
-            // Update Tag
-            await tx.rfidTags.upsert({
-                where: { epc: rfidEpc },
-                update: { status: 'ACTIVE', current_sample_id: sampleId, last_assigned_at: new Date() },
-                create: { epc: rfidEpc, status: 'ACTIVE', current_sample_id: sampleId, last_assigned_at: new Date() }
             });
 
             // Log Movement
@@ -133,7 +144,7 @@ export class SampleLifecycleService {
                     action_type: 'RECEIVED_AT_DISPATCH',
                     previous_status: sample.current_status,
                     new_status: 'AT_DISPATCH',
-                    rfid_epc: rfidEpc,
+                    rfid_epc: rfidEpc || sample.rfid_epc,
                     notes: `Sender: ${sender}`
                 }
             });
@@ -153,8 +164,51 @@ export class SampleLifecycleService {
         });
     }
 
+    // 1.5 Encode RFID (New)
+    async encodeRfid(sampleId: string, userId: string, rfidEpc: string, deviceId?: string) {
+        return prisma.$transaction(async (tx) => {
+            const sample = await tx.samples.findUnique({ where: { id: sampleId } });
+            if (!sample) throw new Error('Sample not found');
+            
+            // Check if tag is available
+            const rfidTag = await tx.rfidTags.findUnique({ where: { epc: rfidEpc } });
+            if (rfidTag?.status === 'ACTIVE' && rfidTag.current_sample_id !== sampleId) {
+                throw new Error('RFID tag is already active on another sample');
+            }
+
+            // Update Sample
+            const updated = await tx.samples.update({
+                where: { id: sampleId },
+                data: { rfid_epc: rfidEpc }
+            });
+
+            // Update Tag
+            await tx.rfidTags.upsert({
+                where: { epc: rfidEpc },
+                update: { status: 'ACTIVE', current_sample_id: sampleId, last_assigned_at: new Date() },
+                create: { epc: rfidEpc, status: 'ACTIVE', current_sample_id: sampleId, last_assigned_at: new Date() }
+            });
+
+            // Log Movement
+            await tx.sampleMovements.create({
+                data: {
+                    sample_id: sampleId,
+                    user_id: userId,
+                    device_id: deviceId,
+                    action_type: 'RFID_ENCODED',
+                    previous_status: sample.current_status,
+                    new_status: sample.current_status,
+                    rfid_epc: rfidEpc,
+                    notes: 'RFID tag encoded manually'
+                }
+            });
+
+            return updated;
+        });
+    }
+
     // 2. Merchandiser Receive
-    async merchandiserReceive(sampleId: string, merchandiserUserId: string, rfidEpc: string, deviceId?: string) {
+    async merchandiserReceive(sampleId: string, merchandiserUserId: string, rfidEpc: string | undefined, deviceId?: string) {
         return prisma.$transaction(async (tx) => {
             const sample = await tx.samples.findUnique({ where: { id: sampleId } });
             if (!sample) throw new Error('Sample not found');
@@ -177,7 +231,7 @@ export class SampleLifecycleService {
                     action_type: 'RECEIVED_BY_MERCHANDISER',
                     previous_status: sample.current_status,
                     new_status: 'WITH_MERCHANDISER',
-                    rfid_epc: rfidEpc
+                    rfid_epc: rfidEpc || sample.rfid_epc
                 }
             });
 
@@ -186,12 +240,12 @@ export class SampleLifecycleService {
     }
 
     // 3. Store Sample
-    async storeSample(sampleId: string, userId: string, rfidEpc: string, locationId: string, deviceId?: string) {
+    async storeSample(sampleId: string, userId: string, rfidEpc: string | undefined, locationId: string, deviceId?: string) {
         return prisma.$transaction(async (tx) => {
             const sample = await tx.samples.findUnique({ where: { id: sampleId } });
             if (!sample) throw new Error('Sample not found');
-            if (sample.current_status !== 'WITH_MERCHANDISER') throw new Error('Invalid status transition');
-            if (sample.rfid_epc !== rfidEpc) throw new Error('Scanned tag does not match this sample');
+            if (sample.current_status !== 'WITH_MERCHANDISER' && sample.current_status !== 'AT_DISPATCH') throw new Error('Invalid status transition');
+            if (sample.rfid_epc && sample.rfid_epc !== rfidEpc) throw new Error('Scanned tag does not match this sample');
 
             const loc = await tx.storageLocations.findUnique({ where: { id: locationId } });
             if (!loc) throw new Error('Location not found');
@@ -218,7 +272,7 @@ export class SampleLifecycleService {
                     action_type: 'STORED',
                     previous_status: sample.current_status,
                     new_status: 'IN_STORAGE',
-                    rfid_epc: rfidEpc
+                    rfid_epc: rfidEpc || sample.rfid_epc
                 }
             });
 
@@ -267,12 +321,12 @@ export class SampleLifecycleService {
     }
 
     // 5. Transfer Ownership
-    async initiateTransfer(sampleId: string, fromUserId: string, toUserId: string, rfidEpc: string, reason: string, deviceId?: string) {
+    async initiateTransfer(sampleId: string, fromUserId: string, toUserId: string, rfidEpc: string | undefined, reason: string, deviceId?: string) {
         return prisma.$transaction(async (tx) => {
             const sample = await tx.samples.findUnique({ where: { id: sampleId } });
             if (!sample) throw new Error('Sample not found');
-            if (sample.current_status !== 'WITH_MERCHANDISER') throw new Error('Invalid status transition');
-            if (sample.rfid_epc !== rfidEpc) throw new Error('Scanned tag does not match this sample');
+            if (sample.current_status !== 'WITH_MERCHANDISER' && sample.current_status !== 'AT_DISPATCH' && sample.current_status !== 'IN_STORAGE') throw new Error('Invalid status transition');
+            if (sample.rfid_epc && sample.rfid_epc !== rfidEpc) throw new Error('Scanned tag does not match this sample');
             if (fromUserId === toUserId) throw new Error('Cannot transfer to yourself');
 
             const transfer = await tx.sampleTransfers.create({
@@ -298,7 +352,7 @@ export class SampleLifecycleService {
                     action_type: 'TRANSFER_INITIATED',
                     previous_status: sample.current_status,
                     new_status: 'PENDING_TRANSFER_APPROVAL',
-                    rfid_epc: rfidEpc,
+                    rfid_epc: rfidEpc || sample.rfid_epc,
                     notes: `Transfer initiated to user ID: ${toUserId}`
                 }
             });

@@ -1,27 +1,35 @@
 import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Package, Search, Plus, Filter, RefreshCw, Archive, ArrowRightLeft, MapPin, X } from 'lucide-react';
+import { Package, Search, Plus, Filter, RefreshCw, Archive, ArrowRightLeft, MapPin, X, ChevronDown, ChevronUp, SmartphoneNfc } from 'lucide-react';
 import { samplesApi, api } from '../api';
 import type { Sample } from '../api/samples';
 import { useAuthStore } from '../stores/authStore';
+import { useToastActions } from '../stores/uiStore';
 import { useNavigate } from 'react-router-dom';
 
 const SAMPLE_STATUS_COLORS: Record<string, string> = {
-  IN_TRANSIT_TO_DISPATCH: 'bg-yellow-100 text-yellow-800 border-yellow-200',
-  AT_DISPATCH: 'bg-orange-100 text-orange-800 border-orange-200',
-  WITH_MERCHANDISER: 'bg-green-100 text-green-800 border-green-200',
-  IN_STORAGE: 'bg-indigo-100 text-indigo-800 border-indigo-200',
-  PENDING_TRANSFER_APPROVAL: 'bg-blue-100 text-blue-800 border-blue-200',
-  DISPOSED: 'bg-red-100 text-red-800 border-red-200',
+  IN_TRANSIT_TO_DISPATCH: 'bg-blue-100 text-blue-800 border-blue-200',
+  AT_DISPATCH: 'bg-blue-100 text-blue-800 border-blue-200',
+  WITH_MERCHANDISER: 'bg-yellow-100 text-yellow-800 border-yellow-200',
+  IN_STORAGE: 'bg-gray-100 text-gray-800 border-gray-200',
+  PENDING_TRANSFER_APPROVAL: 'bg-indigo-100 text-indigo-800 border-indigo-200',
+  DISPOSED: 'bg-black text-white border-black',
+  LOST: 'bg-red-100 text-red-800 border-red-200',
 };
 
 export default function Dashboard() {
   const { user } = useAuthStore();
   const [searchTerm, setSearchTerm] = useState('');
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isEncodeModalOpen, setIsEncodeModalOpen] = useState(false);
+  const [targetSample, setTargetSample] = useState<Sample | null>(null);
+  const [encodeRfid, setEncodeRfid] = useState('');
   const [formData, setFormData] = useState({ buyer_id: '', sample_type: 'Proto', description: '', photo_url: '' });
+  const [expandedRow, setExpandedRow] = useState<string | null>(null);
+  const [filterType, setFilterType] = useState<string>('');
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { addToast } = useToastActions();
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -51,17 +59,31 @@ export default function Dashboard() {
       queryClient.invalidateQueries({ queryKey: ['samples'] });
       setIsCreateModalOpen(false);
       setFormData({ buyer_id: '', sample_type: 'Proto', description: '', photo_url: '' });
+      addToast({ type: 'success', title: 'Success', message: 'Sample created successfully. Next: Encode RFID.' });
     },
     onError: (err: any) => alert(err.response?.data?.message || err.message || 'Failed to create')
   });
 
+  const encodeMutation = useMutation({
+    mutationFn: (data: { id: string; rfid_epc: string }) => samplesApi.encode(data.id, data.rfid_epc),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['samples'] });
+      setIsEncodeModalOpen(false);
+      setEncodeRfid('');
+      addToast({ type: 'success', title: 'Encoded', message: 'RFID tag assigned successfully.' });
+    },
+    onError: (err: any) => addToast({ type: 'error', title: 'Encoding Failed', message: err.response?.data?.message || err.message })
+  });
+
   const samples = response?.data || [];
 
-  const filteredSamples = samples.filter((s: Sample) =>
-    s.sample_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    s.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    s.sample_type.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredSamples = samples.filter((s: Sample) => {
+    const matchesSearch = s.sample_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          s.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          s.sample_type.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesFilter = filterType ? s.sample_type === filterType : true;
+    return matchesSearch && matchesFilter;
+  });
 
   const StatusBadge = ({ status }: { status: string }) => {
     const colorClass = SAMPLE_STATUS_COLORS[status] || 'bg-gray-100 text-gray-800 border-gray-200';
@@ -79,7 +101,7 @@ export default function Dashboard() {
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
         <div>
           <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
-            My Samples
+            Sample Center
           </h1>
           <p className="text-gray-500 mt-1">Manage your active samples and track their lifecycle.</p>
         </div>
@@ -140,10 +162,18 @@ export default function Dashboard() {
           </div>
 
           <div className="flex gap-2 w-full md:w-auto">
-            <button className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2.5 bg-white border border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 transition-colors font-medium">
-              <Filter className="w-4 h-4" />
-              <span>Filter</span>
-            </button>
+            <select
+              value={filterType}
+              onChange={(e) => setFilterType(e.target.value)}
+              className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2.5 bg-white border border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 transition-colors font-medium outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+            >
+              <option value="">All Types</option>
+              <option value="Proto">Proto</option>
+              <option value="Fit">Fit</option>
+              <option value="Size Set">Size Set</option>
+              <option value="PP">PP</option>
+              <option value="Shipment">Shipment</option>
+            </select>
           </div>
         </div>
 
@@ -178,44 +208,89 @@ export default function Dashboard() {
                 </tr>
               ) : (
                 filteredSamples.map((sample: Sample, i: number) => (
-                  <tr key={sample.id} onClick={() => navigate(`/samples/${sample.id}`)} className="hover:bg-gray-50/50 transition-colors group cursor-pointer animate-in slide-in-from-bottom flex-grow" style={{ animationDelay: `${i * 50}ms`, animationFillMode: 'both' }}>
-                    <td className="px-6 py-4">
-                      <div className="font-semibold text-gray-900">{sample.sample_id}</div>
-                      <div className="text-xs text-gray-500 mt-0.5">{new Date(sample.created_at).toLocaleDateString()}</div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="font-medium text-gray-900">{sample.description}</div>
-                      <div className="text-xs text-gray-500 mt-0.5">Type: {sample.sample_type} • Buyer: {sample.buyer?.name || 'Unknown'}</div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <StatusBadge status={sample.current_status} />
-                    </td>
-                    <td className="px-6 py-4">
-                      {sample.rfid_epc ? (
-                        <span className="flex items-center gap-1.5 text-sm font-medium text-green-700 bg-green-50 px-2.5 py-1 rounded-md border border-green-100 w-max">
-                          <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></div>
-                          {sample.rfid_epc.slice(-6)}
-                        </span>
-                      ) : (
-                        <span className="text-xs text-gray-400 font-medium px-2 py-1 bg-gray-50 rounded-md border border-gray-100">Pending Tag</span>
-                      )}
-                    </td>
-                    <td className="px-6 py-4">
-                      {sample.storage_location ? (
-                        <div className="flex items-center gap-1.5 text-sm text-gray-700">
-                          <MapPin className="w-4 h-4 text-indigo-500" />
-                          <span>{sample.storage_location.rack}-{sample.storage_location.shelf}-{sample.storage_location.bin_id}</span>
+                  <React.Fragment key={sample.id}>
+                    <tr onClick={() => setExpandedRow(expandedRow === sample.id ? null : sample.id)} className="hover:bg-gray-50/50 transition-colors group cursor-pointer animate-in slide-in-from-bottom flex-grow" style={{ animationDelay: `${i * 50}ms`, animationFillMode: 'both' }}>
+                      <td className="px-6 py-4">
+                        <div className="text-gray-500 font-mono text-sm">{sample.sample_id}</div>
+                        <div className="text-xs text-gray-400 mt-0.5">{new Date(sample.created_at).toLocaleDateString()}</div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="font-bold text-gray-900 text-base">{sample.sample_type}</div>
+                        <div className="font-semibold text-blue-600 mt-0.5">{sample.buyer?.name || 'Unknown Buyer'}</div>
+                        <div className="text-sm text-gray-700 mt-1">{sample.description}</div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <StatusBadge status={sample.current_status} />
+                      </td>
+                      <td className="px-6 py-4">
+                        {sample.rfid_epc ? (
+                          <span className="flex items-center gap-1.5 text-sm font-medium text-green-700 bg-green-50 px-2.5 py-1 rounded-md border border-green-100 w-max">
+                            <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></div>
+                            {sample.rfid_epc.slice(-6)}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-gray-400 font-medium px-2 py-1 bg-gray-50 rounded-md border border-gray-100">Pending Tag</span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4">
+                        {sample.storage_location ? (
+                          <div className="flex items-center gap-1.5 text-sm text-gray-700">
+                            <MapPin className="w-4 h-4 text-indigo-500" />
+                            <span>{sample.storage_location.rack}-{sample.storage_location.shelf}-{sample.storage_location.bin_id}</span>
+                          </div>
+                        ) : (
+                          <span className="text-gray-400 text-sm">-</span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <div className="flex items-center justify-end gap-3">
+                          <button onClick={(e) => { e.stopPropagation(); navigate(`/samples/${sample.id}`); }} className="text-blue-600 font-medium text-sm hover:underline hover:text-blue-700">
+                            View Details
+                          </button>
+                          {expandedRow === sample.id ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
                         </div>
-                      ) : (
-                        <span className="text-gray-400 text-sm">-</span>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <button className="text-blue-600 font-medium text-sm hover:underline hover:text-blue-700 opacity-0 group-hover:opacity-100 transition-opacity">
-                        View Details
-                      </button>
-                    </td>
-                  </tr>
+                      </td>
+                    </tr>
+                    {expandedRow === sample.id && (
+                      <tr className="bg-gray-50/50">
+                        <td colSpan={6} className="px-6 py-4">
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                            <div>
+                              <p className="text-gray-500 text-xs uppercase tracking-wide">Category</p>
+                              <p className="font-medium text-gray-900 mt-1">{sample.sample_type}</p>
+                            </div>
+                            <div>
+                              <p className="text-gray-500 text-xs uppercase tracking-wide">Buyer Group</p>
+                              <p className="font-medium text-gray-900 mt-1">{sample.buyer?.name || 'N/A'}</p>
+                            </div>
+                            <div>
+                              <p className="text-gray-500 text-xs uppercase tracking-wide">Barcode / ID</p>
+                              <p className="font-medium text-gray-600 mt-1 font-mono text-xs max-w-xs break-all border border-gray-200 p-1.5 rounded bg-white inline-block">
+                                ID: {sample.sample_id}
+                                {sample.rfid_epc && <><br/>RFID: {sample.rfid_epc}</>}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-gray-500 text-xs uppercase tracking-wide">Actions</p>
+                              {!sample.rfid_epc && (
+                                <button 
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setTargetSample(sample);
+                                    setIsEncodeModalOpen(true);
+                                  }}
+                                  className="mt-1 flex items-center gap-1.5 px-3 py-1.5 bg-white border border-gray-200 text-blue-600 font-medium hover:bg-blue-50 rounded transition-colors text-xs"
+                                >
+                                  <SmartphoneNfc className="w-4 h-4" />
+                                  Encode RFID
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
                 ))
               )}
             </tbody>
@@ -298,6 +373,53 @@ export default function Dashboard() {
                 className="px-5 py-2 bg-blue-600 text-white rounded-xl font-medium shadow-md hover:bg-blue-700 disabled:opacity-50"
               >
                 {createMutation.isPending ? 'Creating...' : 'Confirm'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isEncodeModalOpen && targetSample && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="p-5 border-b border-gray-100 flex justify-between items-center bg-blue-50">
+              <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                <SmartphoneNfc className="w-5 h-5 text-blue-600" />
+                Encode RFID Tag
+              </h3>
+              <button onClick={() => setIsEncodeModalOpen(false)} className="text-gray-400 hover:text-gray-600 bg-white shadow-sm border p-1 rounded-full">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div className="text-sm text-gray-600">
+                Assigning a permanent RFID hard tag to <span className="font-bold">{targetSample.sample_id}</span>.
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">RFID EPC Code *</label>
+                <input
+                  type="text"
+                  value={encodeRfid}
+                  onChange={e => setEncodeRfid(e.target.value)}
+                  placeholder="Scan or enter tag ID..."
+                  className="w-full px-3 py-2 border rounded-xl text-sm font-mono outline-none focus:ring-2 focus:ring-blue-500"
+                  autoFocus
+                />
+              </div>
+            </div>
+            <div className="p-5 border-t border-gray-100 flex justify-end gap-3 bg-gray-50">
+              <button
+                onClick={() => { setIsEncodeModalOpen(false); setEncodeRfid(''); }}
+                className="px-4 py-2 border border-gray-300 text-gray-700 rounded-xl font-medium hover:bg-gray-100"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => encodeMutation.mutate({ id: targetSample.id, rfid_epc: encodeRfid })}
+                disabled={encodeMutation.isPending || !encodeRfid}
+                className="px-5 py-2 bg-blue-600 text-white rounded-xl font-medium shadow-md hover:bg-blue-700 disabled:opacity-50"
+              >
+                {encodeMutation.isPending ? 'Encoding...' : 'Apply Tag'}
               </button>
             </div>
           </div>

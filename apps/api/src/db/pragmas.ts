@@ -52,7 +52,7 @@ export async function main(): Promise<void> {
   try {
     await applyPragmas();
     console.log('=== Pragmas Applied Successfully ===');
-    
+
     const settings = await getPragmaSettings();
     console.log('Current pragma settings:');
     console.log(`  foreign_keys: ${settings.foreign_keys}`);

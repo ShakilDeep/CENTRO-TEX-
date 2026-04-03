@@ -1,152 +1,379 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Tag, Plus, Check, X, ShieldAlert, RefreshCw, Power, MapPin, Users, Key } from 'lucide-react';
-import { rfidApi, storageApi, api } from '../api';
+import { 
+  Package, Search, Plus, RefreshCw, SmartphoneNfc, 
+  ArrowRightLeft, MapPin, X, ChevronDown, ChevronUp,
+  LayoutDashboard, User, Calendar, Database
+} from 'lucide-react';
+import { samplesApi, api, rfidApi, transfersApi, storageApi } from '../api';
+import type { Sample } from '../api/samples';
+import { useAuthStore } from '../stores/authStore';
+import { useToastActions } from '../stores/uiStore';
+import { useNavigate } from 'react-router-dom';
+
+const SAMPLE_STATUS_COLORS: Record<string, string> = {
+  IN_TRANSIT_TO_DISPATCH: 'bg-blue-100 text-blue-800 border-blue-200',
+  AT_DISPATCH: 'bg-blue-100 text-blue-800 border-blue-200',
+  WITH_MERCHANDISER: 'bg-yellow-100 text-yellow-800 border-yellow-200',
+  IN_STORAGE: 'bg-gray-100 text-gray-800 border-gray-200',
+  PENDING_TRANSFER_APPROVAL: 'bg-indigo-100 text-indigo-800 border-indigo-200',
+  DISPOSED: 'bg-black text-white border-black',
+  LOST: 'bg-red-100 text-red-800 border-red-200',
+};
+
+const StatusBadge = ({ status }: { status: string }) => {
+  const colorClass = SAMPLE_STATUS_COLORS[status] || 'bg-gray-100 text-gray-800 border-gray-200';
+  return (
+    <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold tracking-wider border uppercase ${colorClass}`}>
+      {status.replace(/_/g, ' ')}
+    </span>
+  );
+};
 
 export default function Admin() {
-  const [activeTab, setActiveTab] = useState<'RFID' | 'LOCATIONS' | 'USERS'>('LOCATIONS');
+  const { user } = useAuthStore();
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filterType, setFilterType] = useState('');
+  const [expandedRow, setExpandedRow] = useState<string | null>(null);
+  
+  // Modals
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isEncodeModalOpen, setIsEncodeModalOpen] = useState(false);
+  const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
+  const [isStoreModalOpen, setIsStoreModalOpen] = useState(false);
+  
+  // Selected Sample for Actions
+  const [selectedSample, setSelectedSample] = useState<Sample | null>(null);
+  
+  // Form States
+  const [createFormData, setCreateFormData] = useState({ buyer_id: '', sample_type: 'Proto', description: '', photo_url: '' });
+  const [encodeRfid, setEncodeRfid] = useState('');
+  const [transferToUserId, setTransferToUserId] = useState('');
+  const [transferNotes, setTransferNotes] = useState('');
+  const [storeLocationId, setStoreLocationId] = useState('');
 
-  // RFID State
-  const [newEpc, setNewEpc] = useState('');
-
-  // Location State
-  const [locForm, setLocForm] = useState({ rack: '', shelf: '', bin_id: '', max_capacity: '', sample_type_affinity: '' });
-
-  // User State
-  const [userForm, setUserForm] = useState({ name: '', email: '', role: 'MERCHANDISER', office: '' });
-
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { addToast } = useToastActions();
 
-  // --- Queries ---
-  const { data: tagsRes, isLoading: isLoadingTags } = useQuery({
-    queryKey: ['admin-rfid-tags'],
-    queryFn: () => rfidApi.getTags()
+  // Queries
+  const { data: response, isLoading, refetch } = useQuery({
+    queryKey: ['admin-samples-queue'],
+    queryFn: () => samplesApi.list()
   });
-  const tags = tagsRes?.data || [];
 
-  const { data: locsRes, isLoading: isLoadingLocs } = useQuery({
-    queryKey: ['admin-locations'],
+  const { data: buyersRes } = useQuery({
+    queryKey: ['buyers'],
+    queryFn: () => api.get('/api/v1/samples/buyers').then(r => r.data)
+  });
+  const buyersList = buyersRes?.data || [];
+
+  const { data: usersResponse } = useQuery({
+    queryKey: ['users-list'],
+    queryFn: async () => {
+        const res = await api.get('/api/v1/auth/users');
+        return res.data;
+    }
+  });
+  const usersList = usersResponse?.data || [];
+
+  const { data: locationsResponse } = useQuery({
+    queryKey: ['locations-list'],
     queryFn: () => storageApi.getLocations()
   });
-  const locations = locsRes?.data || [];
+  const locationsList = locationsResponse?.data || [];
 
-  const { data: usersRes, isLoading: isLoadingUsers } = useQuery({
-    queryKey: ['admin-users'],
-    queryFn: () => api.get('/api/v1/auth/users').then(r => r.data)
-  });
-  const users = usersRes?.data || [];
+  const samples = response?.data || [];
 
-  // --- Mutations ---
-  const createTagMutation = useMutation({
-    mutationFn: (epc: string) => rfidApi.createTag(epc),
+  // Mutations
+  const createMutation = useMutation({
+    mutationFn: (data: any) => samplesApi.create(data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin-rfid-tags'] });
-      setNewEpc('');
+      queryClient.invalidateQueries({ queryKey: ['admin-samples-queue'] });
+      setIsCreateModalOpen(false);
+      setCreateFormData({ buyer_id: '', sample_type: 'Proto', description: '', photo_url: '' });
+      addToast({ type: 'success', title: 'Success', message: 'Sample created successfully. Now encode RFID.' });
     },
-    onError: (err: any) => alert(err.response?.data?.message || err.message)
+    onError: (err: any) => addToast({ type: 'error', title: 'Creation Failed', message: err.response?.data?.message || err.message })
   });
 
-  const updateTagStatusMutation = useMutation({
-    mutationFn: ({ epc, status }: { epc: string, status: string }) => rfidApi.updateTagStatus(epc, status),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin-rfid-tags'] }),
-    onError: (err: any) => alert(err.response?.data?.message || err.message)
-  });
-
-  const createLocMutation = useMutation({
-    mutationFn: (data: any) => api.post('/api/v1/storage/locations', data),
+  const encodeMutation = useMutation({
+    mutationFn: (data: { id: string; rfid_epc: string }) => samplesApi.encode(data.id, data.rfid_epc),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin-locations'] });
-      setLocForm({ rack: '', shelf: '', bin_id: '', max_capacity: '', sample_type_affinity: '' });
+      queryClient.invalidateQueries({ queryKey: ['admin-samples-queue'] });
+      setIsEncodeModalOpen(false);
+      setEncodeRfid('');
+      addToast({ type: 'success', title: 'Encoded', message: 'RFID tag assigned successfully.' });
     },
-    onError: (err: any) => alert(err.response?.data?.message || err.message)
+    onError: (err: any) => addToast({ type: 'error', title: 'Encoding Failed', message: err.response?.data?.message || err.message })
   });
 
-  const updateLocMutation = useMutation({
-    mutationFn: ({ id, ...data }: any) => api.patch(`/api/v1/storage/locations/${id}`, data),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin-locations'] }),
-    onError: (err: any) => alert(err.response?.data?.message || err.message)
-  });
-
-  const createUserMutation = useMutation({
-    mutationFn: (data: any) => api.post('/api/v1/auth/users', data),
+  const transferMutation = useMutation({
+    mutationFn: (data: { id: string; to_user_id: string; reason: string; rfid_epc: string }) => transfersApi.initiate(data.id, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin-users'] });
-      setUserForm({ name: '', email: '', role: 'MERCHANDISER', office: '' });
+        queryClient.invalidateQueries({ queryKey: ['admin-samples-queue'] });
+        addToast({ type: 'success', title: 'Transfer Initiated', message: 'Transfer request sent.' });
+        setIsTransferModalOpen(false);
+        setSelectedSample(null);
     },
-    onError: (err: any) => alert(err.response?.data?.message || err.message)
+    onError: (err: any) => addToast({ type: 'error', title: 'Transfer Failed', message: err.response?.data?.message || err.message })
   });
 
-  const updateUserMutation = useMutation({
-    mutationFn: ({ id, ...data }: any) => api.patch(`/api/v1/auth/users/${id}`, data),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin-users'] }),
-    onError: (err: any) => alert(err.response?.data?.message || err.message)
+  const storeMutation = useMutation({
+    mutationFn: (data: { id: string; location_id: string; rfid_epc: string }) => storageApi.store(data.id, data),
+    onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: ['admin-samples-queue'] });
+        addToast({ type: 'success', title: 'Stored', message: 'Sample moved to storage.' });
+        setIsStoreModalOpen(false);
+        setSelectedSample(null);
+    },
+    onError: (err: any) => addToast({ type: 'error', title: 'Storage Failed', message: err.response?.data?.message || err.message })
   });
 
-  // --- Form Handlers ---
-  const handleCreateTag = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (newEpc.trim()) createTagMutation.mutate(newEpc.trim());
-  };
+  // Filter Logic
+  const filteredSamples = samples.filter((s: Sample) => {
+    const matchesSearch = s.sample_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          s.description.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesFilter = filterType ? s.sample_type === filterType : true;
+    return matchesSearch && matchesFilter;
+  });
 
-  const handleCreateLoc = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (locForm.rack && locForm.shelf && locForm.max_capacity) createLocMutation.mutate(locForm);
-  };
-
-  const handleCreateUser = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (userForm.name && userForm.email) createUserMutation.mutate(userForm);
+  const handleAction = (sample: Sample, action: 'encode' | 'transfer' | 'store') => {
+    setSelectedSample(sample);
+    if (action === 'encode') setIsEncodeModalOpen(true);
+    if (action === 'transfer') setIsTransferModalOpen(true);
+    if (action === 'store') setIsStoreModalOpen(true);
   };
 
   return (
-    <div className="max-w-6xl mx-auto p-6 space-y-6">
-      <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
-        System Administration
-      </h1>
-      <p className="text-gray-500">Manage locations, users, and RFID tags.</p>
+    <div className="max-w-7xl mx-auto p-6 space-y-6 animate-in fade-in duration-500">
+      
+      {/* Header Section */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+        <div>
+          <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent flex items-center gap-2">
+            <LayoutDashboard className="w-8 h-8 text-blue-600" />
+            Floor Counter Admin
+          </h1>
+          <p className="text-gray-500 mt-1">Digitalize merchandiser floor counter work: Create, Encode, Transfer, and Store.</p>
+        </div>
 
-      {/* TABS */}
-      <div className="flex bg-gray-100 p-1 rounded-xl w-max mt-6">
-        <button onClick={() => setActiveTab('LOCATIONS')} className={`flex items-center gap-2 px-6 py-2.5 text-sm font-medium rounded-lg transition-all ${activeTab === 'LOCATIONS' ? 'bg-white shadow-sm text-indigo-700' : 'text-gray-600 hover:text-gray-900'}`}>
-          <MapPin className="w-4 h-4" /> Locations
-        </button>
-        <button onClick={() => setActiveTab('USERS')} className={`flex items-center gap-2 px-6 py-2.5 text-sm font-medium rounded-lg transition-all ${activeTab === 'USERS' ? 'bg-white shadow-sm text-indigo-700' : 'text-gray-600 hover:text-gray-900'}`}>
-          <Users className="w-4 h-4" /> Users
-        </button>
-        <button onClick={() => setActiveTab('RFID')} className={`flex items-center gap-2 px-6 py-2.5 text-sm font-medium rounded-lg transition-all ${activeTab === 'RFID' ? 'bg-white shadow-sm text-indigo-700' : 'text-gray-600 hover:text-gray-900'}`}>
-          <Tag className="w-4 h-4" /> RFID Tags
-        </button>
+        <div className="flex gap-3">
+          <button
+            onClick={() => refetch()}
+            className="p-2.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-colors"
+            title="Refresh Queue"
+          >
+            <RefreshCw className="w-5 h-5" />
+          </button>
+
+          <button
+            onClick={() => setIsCreateModalOpen(true)}
+            className="flex items-center gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white px-5 py-2.5 rounded-xl font-medium shadow-md transition-all active:scale-95"
+          >
+            <Plus className="w-5 h-5" />
+            <span>Create Sample</span>
+          </button>
+        </div>
       </div>
 
-      {/* ------------- LOCATIONS TAB ------------- */}
-      {activeTab === 'LOCATIONS' && (
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mt-6">
-          <div className="p-6 border-b border-gray-100 bg-gray-50 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+      {/* Stats Summary */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        {[
+          { label: 'Total Samples', value: samples.length, icon: Package, color: 'text-indigo-600', bg: 'bg-indigo-50' },
+          { label: 'Pending Encode', value: samples.filter(s => !s.rfid_epc).length, icon: SmartphoneNfc, color: 'text-orange-600', bg: 'bg-orange-50' },
+          { label: 'At Counter', value: samples.filter(s => s.current_status === 'AT_DISPATCH').length, icon: LayoutDashboard, color: 'text-blue-600', bg: 'bg-blue-50' },
+          { label: 'In Storage', value: samples.filter(s => s.current_status === 'IN_STORAGE').length, icon: Database, color: 'text-emerald-600', bg: 'bg-emerald-50' },
+        ].map((stat, i) => (
+          <div key={i} className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex items-center gap-4">
+            <div className={`p-3 rounded-xl ${stat.bg} ${stat.color}`}>
+              <stat.icon className="w-6 h-6" />
+            </div>
             <div>
-              <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-                <MapPin className="w-5 h-5 text-indigo-600" /> Location Management
-              </h2>
-              <p className="text-sm text-gray-500 mt-1">Add, rename, and manage warehouse storage locations.</p>
+              <p className="text-sm font-medium text-gray-500">{stat.label}</p>
+              <h3 className="text-2xl font-bold text-gray-900">{stat.value}</h3>
             </div>
           </div>
-          <div className="p-6 border-b border-gray-100">
-            <form onSubmit={handleCreateLoc} className="flex gap-4 items-end flex-wrap">
+        ))}
+      </div>
+
+      {/* Main Queue Table */}
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+        <div className="p-4 border-b border-gray-100 bg-gray-50/50 flex flex-col md:flex-row items-center justify-between gap-4">
+          <div className="relative w-full md:w-96">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Search by ID or Description..."
+              className="w-full pl-10 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all outline-none text-sm"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+          </div>
+
+          <div className="flex gap-2">
+            <select
+              value={filterType}
+              onChange={(e) => setFilterType(e.target.value)}
+              className="px-4 py-2.5 bg-white border border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 transition-colors font-medium outline-none text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+            >
+              <option value="">All Types</option>
+              <option value="Proto">Proto</option>
+              <option value="Fit">Fit</option>
+              <option value="Size Set">Size Set</option>
+              <option value="PP">PP</option>
+              <option value="Shipment">Shipment</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-gray-50 text-gray-500 text-xs uppercase tracking-wider">
+                <th className="px-6 py-4 font-semibold">Sample ID</th>
+                <th className="px-6 py-4 font-semibold">Details</th>
+                <th className="px-6 py-4 font-semibold">Status</th>
+                <th className="px-6 py-4 font-semibold text-right">Counter Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {isLoading ? (
+                <tr>
+                  <td colSpan={4} className="px-6 py-12 text-center text-gray-500">
+                    <RefreshCw className="w-6 h-6 animate-spin mx-auto text-blue-500" />
+                    <p className="mt-2 text-sm">Loading queue...</p>
+                  </td>
+                </tr>
+              ) : filteredSamples.length === 0 ? (
+                <tr>
+                  <td colSpan={4} className="px-6 py-16 text-center text-gray-500">
+                    <Package className="w-12 h-12 mx-auto text-gray-300 mb-3" />
+                    <p className="text-base font-semibold text-gray-900">No samples in queue</p>
+                  </td>
+                </tr>
+              ) : (
+                filteredSamples.map((sample: Sample, i: number) => (
+                  <React.Fragment key={sample.id}>
+                    <tr 
+                      onClick={() => setExpandedRow(expandedRow === sample.id ? null : sample.id)} 
+                      className="hover:bg-blue-50/30 transition-colors cursor-pointer"
+                    >
+                      <td className="px-6 py-4">
+                        <div className="font-mono text-xs font-semibold text-gray-500">{sample.sample_id}</div>
+                        <div className="font-bold text-gray-900 mt-0.5">{sample.sample_type}</div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="text-sm font-medium text-gray-900 line-clamp-1">{sample.description}</div>
+                        <div className="flex items-center gap-1.5 mt-1 text-xs text-blue-600 font-semibold">
+                          {sample.buyer?.name || 'N/A'}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <StatusBadge status={sample.current_status} />
+                        <div className="flex items-center gap-1.5 text-[10px] text-gray-400 mt-1 uppercase font-bold">
+                          {sample.rfid_epc ? 'LINKED' : 'TAG PENDING'}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          {!sample.rfid_epc ? (
+                            <button 
+                              onClick={(e) => { e.stopPropagation(); handleAction(sample, 'encode'); }} 
+                              className="bg-orange-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold shadow-sm hover:bg-orange-700 transition-all flex items-center gap-1.5"
+                            >
+                              <SmartphoneNfc className="w-3.5 h-3.5" /> ENCODE
+                            </button>
+                          ) : (
+                            <>
+                              <button 
+                                onClick={(e) => { e.stopPropagation(); handleAction(sample, 'transfer'); }} 
+                                className="bg-blue-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold shadow-sm hover:bg-blue-700 transition-all flex items-center gap-1.5"
+                              >
+                                <ArrowRightLeft className="w-3.5 h-3.5" /> TRANSFER
+                              </button>
+                              <button 
+                                onClick={(e) => { e.stopPropagation(); handleAction(sample, 'store'); }} 
+                                className="bg-emerald-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold shadow-sm hover:bg-emerald-700 transition-all flex items-center gap-1.5"
+                              >
+                                <MapPin className="w-3.5 h-3.5" /> STORE
+                              </button>
+                            </>
+                          )}
+                          {expandedRow === sample.id ? <ChevronUp className="w-4 h-4 text-gray-400 ml-1" /> : <ChevronDown className="w-4 h-4 text-gray-400 ml-1" />}
+                        </div>
+                      </td>
+                    </tr>
+                    {expandedRow === sample.id && (
+                      <tr className="bg-gray-50/50">
+                        <td colSpan={4} className="px-10 py-4">
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-6 text-sm">
+                            <div>
+                              <p className="text-gray-500 text-[10px] uppercase font-bold tracking-wider">Assigned Merch</p>
+                              <div className="flex items-center gap-2 mt-1.5">
+                                <div className="w-6 h-6 rounded-full bg-blue-100 flex items-center justify-center text-[10px] text-blue-700 font-bold">
+                                  {(sample as any).creator?.name?.slice(0,2).toUpperCase() || '??'}
+                                </div>
+                                <p className="font-semibold text-gray-900 border-b border-gray-200">{(sample as any).creator?.name || 'Unknown'}</p>
+                              </div>
+                            </div>
+                            <div>
+                                <p className="text-gray-500 text-[10px] uppercase font-bold tracking-wider">Registered Date</p>
+                                <div className="flex items-center gap-1.5 mt-1.5">
+                                  <Calendar className="w-4 h-4 text-gray-400" />
+                                  <p className="font-medium text-gray-700">{new Date(sample.created_at).toLocaleDateString()}</p>
+                                </div>
+                            </div>
+                            <div className="md:col-span-2">
+                                <p className="text-gray-500 text-[10px] uppercase font-bold tracking-wider">Technical Notes</p>
+                                <p className="mt-1.5 text-gray-600 text-xs italic">"{sample.description}"</p>
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* CREATE SAMPLE MODAL */}
+      {isCreateModalOpen && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden animate-in zoom-in-95">
+            <div className="p-6 border-b border-gray-100 bg-blue-50 flex justify-between items-center">
+              <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                <Plus className="w-6 h-6 text-blue-600" />
+                New Floor Sample
+              </h3>
+              <button onClick={() => setIsCreateModalOpen(false)} className="text-gray-400 hover:text-gray-600 bg-white p-1.5 rounded-full shadow-sm border border-gray-100">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-8 space-y-5">
               <div>
-                <label className="text-xs font-semibold text-gray-500">Rack</label>
-                <input type="text" required placeholder="A" className="w-20 px-3 py-2 border rounded-xl" value={locForm.rack} onChange={e => setLocForm({ ...locForm, rack: e.target.value })} />
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-1.5">Buyer *</label>
+                <select
+                  value={createFormData.buyer_id}
+                  onChange={e => setCreateFormData({ ...createFormData, buyer_id: e.target.value })}
+                  className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl text-sm outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all"
+                >
+                  <option value="">Select buyer group...</option>
+                  {buyersList.map((b: any) => (
+                    <option key={b.id} value={b.id}>{b.name}</option>
+                  ))}
+                </select>
               </div>
               <div>
-                <label className="text-xs font-semibold text-gray-500">Shelf</label>
-                <input type="text" required placeholder="1" className="w-20 px-3 py-2 border rounded-xl" value={locForm.shelf} onChange={e => setLocForm({ ...locForm, shelf: e.target.value })} />
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-gray-500">Bin</label>
-                <input type="text" required placeholder="12" className="w-20 px-3 py-2 border rounded-xl" value={locForm.bin_id} onChange={e => setLocForm({ ...locForm, bin_id: e.target.value })} />
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-gray-500">Type Affinity</label>
-                <select className="px-3 py-2 border rounded-xl w-32" value={locForm.sample_type_affinity} onChange={e => setLocForm({ ...locForm, sample_type_affinity: e.target.value })}>
-                  <option value="">None</option>
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-1.5">Type *</label>
+                <select
+                  value={createFormData.sample_type}
+                  onChange={e => setCreateFormData({ ...createFormData, sample_type: e.target.value })}
+                  className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl text-sm outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all"
+                >
                   <option value="Proto">Proto</option>
                   <option value="Fit">Fit</option>
                   <option value="Size Set">Size Set</option>
@@ -155,231 +382,150 @@ export default function Admin() {
                 </select>
               </div>
               <div>
-                <label className="text-xs font-semibold text-gray-500">Capacity</label>
-                <input type="number" required placeholder="10" className="w-24 px-3 py-2 border rounded-xl" value={locForm.max_capacity} onChange={e => setLocForm({ ...locForm, max_capacity: e.target.value })} />
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-1.5">Brief Description *</label>
+                <textarea
+                  value={createFormData.description}
+                  onChange={e => setCreateFormData({ ...createFormData, description: e.target.value })}
+                  placeholder="e.g. Blue Denim - XL - Summer V1"
+                  rows={3}
+                  className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl text-sm outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all"
+                />
               </div>
-              <button type="submit" disabled={createLocMutation.isPending} className="bg-indigo-600 text-white px-5 py-2 rounded-xl flex items-center gap-2 hover:bg-indigo-700 disabled:opacity-50">
-                <Plus className="w-4 h-4" /> Add Bin
-              </button>
-            </form>
-          </div>
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-white text-gray-500 text-xs uppercase tracking-wider border-b border-gray-100">
-                <th className="px-6 py-4 font-semibold">Location</th>
-                <th className="px-6 py-4 font-semibold">Type Affinity</th>
-                <th className="px-6 py-4 font-semibold">Capacity</th>
-                <th className="px-6 py-4 font-semibold">Status</th>
-                <th className="px-6 py-4 font-semibold text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {isLoadingLocs ? <tr><td colSpan={5} className="py-12 text-center text-gray-500"><RefreshCw className="animate-spin text-indigo-500 mx-auto" /></td></tr> : locations.map((loc: any) => (
-                <tr key={loc.id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 text-sm font-bold text-gray-900">Rack {loc.rack} - Shelf {loc.shelf} - Bin {loc.bin_id}</td>
-                  <td className="px-6 py-4 text-sm text-gray-600">{loc.sample_type_affinity || 'None'}</td>
-                  <td className="px-6 py-4 text-sm text-gray-600">{loc.current_count} / {loc.max_capacity}</td>
-                  <td className="px-6 py-4">
-                    <span className={`px-2.5 py-1 rounded text-xs font-semibold ${loc.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>{loc.is_active ? 'Active' : 'Inactive'}</span>
-                  </td>
-                  <td className="px-6 py-4 text-right">
-                    {loc.is_active ? (
-                      <button onClick={() => updateLocMutation.mutate({ id: loc.id, is_active: false })} className="text-red-600 hover:bg-red-50 px-3 py-1.5 rounded-lg text-xs font-medium border border-red-100 flex items-center gap-1 ml-auto">
-                        <X className="w-3.5 h-3.5" /> Deactivate
-                      </button>
-                    ) : (
-                      <button onClick={() => updateLocMutation.mutate({ id: loc.id, is_active: true })} className="text-green-600 hover:bg-green-50 px-3 py-1.5 rounded-lg text-xs font-medium border border-green-100 flex items-center gap-1 ml-auto">
-                        <Check className="w-3.5 h-3.5" /> Activate
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {/* ------------- USERS TAB ------------- */}
-      {activeTab === 'USERS' && (
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mt-6">
-          <div className="p-6 border-b border-gray-100 bg-gray-50 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-            <div>
-              <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-                <Users className="w-5 h-5 text-indigo-600" /> User Management
-              </h2>
-              <p className="text-sm text-gray-500 mt-1">Provision roles, enforce deactivation, and manage permissions.</p>
             </div>
-          </div>
-          <div className="p-6 border-b border-gray-100">
-            <form onSubmit={handleCreateUser} className="flex gap-4 items-end flex-wrap">
-              <div className="flex-1 min-w-[200px]">
-                <label className="text-xs font-semibold text-gray-500">Full Name</label>
-                <input type="text" required placeholder="John Doe" className="w-full px-3 py-2 border rounded-xl" value={userForm.name} onChange={e => setUserForm({ ...userForm, name: e.target.value })} />
-              </div>
-              <div className="flex-1 min-w-[220px]">
-                <label className="text-xs font-semibold text-gray-500">Email Address (Unique)</label>
-                <input type="email" required placeholder="john@centrotex.com" className="w-full px-3 py-2 border rounded-xl" value={userForm.email} onChange={e => setUserForm({ ...userForm, email: e.target.value })} />
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-gray-500">Role</label>
-                <select className="px-3 py-2 border rounded-xl w-40" value={userForm.role} onChange={e => setUserForm({ ...userForm, role: e.target.value })}>
-                  <option value="MERCHANDISER">Merchandiser</option>
-                  <option value="DISPATCH">Dispatch User</option>
-                  <option value="ADMIN">Administrator</option>
-                </select>
-              </div>
-              <button type="submit" disabled={createUserMutation.isPending} className="bg-indigo-600 text-white px-5 py-2 rounded-xl flex items-center gap-2 hover:bg-indigo-700 disabled:opacity-50">
-                <Key className="w-4 h-4" /> Provision User
-              </button>
-            </form>
-          </div>
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-white text-gray-500 text-xs uppercase tracking-wider border-b border-gray-100">
-                <th className="px-6 py-4 font-semibold">User Details</th>
-                <th className="px-6 py-4 font-semibold">Role</th>
-                <th className="px-6 py-4 font-semibold">Status</th>
-                <th className="px-6 py-4 font-semibold text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {isLoadingUsers ? <tr><td colSpan={4} className="py-12 text-center text-gray-500"><RefreshCw className="animate-spin text-indigo-500 mx-auto" /></td></tr> : users.map((u: any) => (
-                <tr key={u.id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4">
-                    <p className="font-bold text-sm text-gray-900">{u.name}</p>
-                    <p className="text-xs text-gray-500 mt-0.5">{u.email}</p>
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className="text-xs font-bold text-gray-600 border border-gray-200 bg-white px-2 py-1 rounded-md">{u.role}</span>
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className={`px-2.5 py-1 rounded text-xs font-semibold ${u.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>{u.is_active ? 'Active' : 'Inactive'}</span>
-                  </td>
-                  <td className="px-6 py-4 text-right">
-                    {u.is_active ? (
-                      <button onClick={() => updateUserMutation.mutate({ id: u.id, is_active: false })} className="text-red-600 hover:bg-red-50 px-3 py-1.5 rounded-lg text-xs font-medium border border-red-100 flex items-center gap-1 ml-auto">
-                        <X className="w-3.5 h-3.5" /> Revoke Access
-                      </button>
-                    ) : (
-                      <button onClick={() => updateUserMutation.mutate({ id: u.id, is_active: true })} className="text-green-600 hover:bg-green-50 px-3 py-1.5 rounded-lg text-xs font-medium border border-green-100 flex items-center gap-1 ml-auto">
-                        <Check className="w-3.5 h-3.5" /> Restore Access
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-
-      {/* ------------- RFID TAB ------------- */}
-      {activeTab === 'RFID' && (
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mt-6">
-          <div className="p-6 border-b border-gray-100 bg-gray-50 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-            <div>
-              <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-                <Tag className="w-5 h-5 text-indigo-600" /> RFID Tag Provisioning
-              </h2>
-              <p className="text-sm text-gray-500 mt-1">Register new tags to be used by merchandisers at dispatch, or disable lost/damaged tags.</p>
-            </div>
-
-            <form onSubmit={handleCreateTag} className="flex gap-2 w-full md:w-auto">
-              <input
-                type="text"
-                placeholder="Enter new EPC (simulate scan)..."
-                value={newEpc}
-                onChange={(e) => setNewEpc(e.target.value)}
-                className="flex-1 md:w-64 px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none font-mono text-sm"
-              />
+            <div className="p-6 border-t border-gray-100 flex justify-end gap-3 bg-gray-50/50">
               <button
-                type="submit"
-                disabled={!newEpc.trim() || createTagMutation.isPending}
-                className="bg-indigo-600 text-white px-4 py-2 rounded-xl flex items-center gap-2 font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors shadow-sm"
+                onClick={() => setIsCreateModalOpen(false)}
+                className="px-6 py-2.5 text-gray-600 font-bold hover:text-gray-900"
               >
-                <Plus className="w-4 h-4" /> Provision Tag
+                Cancel
               </button>
-            </form>
+              <button
+                onClick={() => createMutation.mutate(createFormData)}
+                disabled={createMutation.isPending || !createFormData.buyer_id || !createFormData.description}
+                className="px-8 py-2.5 bg-blue-600 text-white rounded-2xl font-bold shadow-lg shadow-blue-200 hover:bg-blue-700 disabled:opacity-50 transition-all active:scale-95"
+              >
+                {createMutation.isPending ? 'Processing...' : 'Register Sample'}
+              </button>
+            </div>
           </div>
+        </div>
+      )}
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-white text-gray-500 text-xs uppercase tracking-wider border-b border-gray-100">
-                  <th className="px-6 py-4 font-semibold">EPC String</th>
-                  <th className="px-6 py-4 font-semibold">Status</th>
-                  <th className="px-6 py-4 font-semibold">Current Sample</th>
-                  <th className="px-6 py-4 font-semibold">Created Date</th>
-                  <th className="px-6 py-4 font-semibold text-right">Admin Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {isLoadingTags ? (
-                  <tr>
-                    <td colSpan={5} className="py-12 text-center text-gray-500">
-                      <RefreshCw className="w-6 h-6 animate-spin mx-auto text-indigo-500 mb-2" />
-                      <p className="text-sm">Loading registered tags...</p>
-                    </td>
-                  </tr>
-                ) : tags.length === 0 ? (
-                  <tr>
-                    <td colSpan={5} className="py-12 text-center text-gray-500">
-                      <ShieldAlert className="w-10 h-10 mx-auto text-gray-300 mb-3" />
-                      <p className="font-medium text-gray-900">No tags provisioned</p>
-                      <p className="text-sm">Scan a new tag to add it to the system pool.</p>
-                    </td>
-                  </tr>
-                ) : (
-                  tags.map((tag: any) => (
-                    <tr key={tag.epc} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-6 py-4 font-mono text-sm text-gray-900">{tag.epc}</td>
-                      <td className="px-6 py-4">
-                        <span className={`inline-flex px-2.5 py-1 rounded-md text-xs font-semibold border ${tag.status === 'AVAILABLE' ? 'bg-green-100 text-green-800 border-green-200' :
-                          tag.status === 'ACTIVE' ? 'bg-blue-100 text-blue-800 border-blue-200' :
-                            'bg-red-100 text-red-800 border-red-200'
-                          }`}>
-                          {tag.status}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4">
-                        {tag.current_sample ? (
-                          <span className="text-sm font-medium text-gray-700 bg-gray-100 px-2.5 py-1 rounded">
-                            {tag.current_sample.sample_id}
-                          </span>
-                        ) : (
-                          <span className="text-xs text-gray-400 italic">Unassigned</span>
-                        )}
-                      </td>
-                      <td className="px-6 py-4 text-sm text-gray-500">
-                        {new Date(tag.created_at).toLocaleDateString()}
-                      </td>
-                      <td className="px-6 py-4 text-right">
-                        {tag.status === 'AVAILABLE' ? (
-                          <button
-                            onClick={() => updateTagStatusMutation.mutate({ epc: tag.epc, status: 'DISABLED' })}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-red-700 bg-red-50 hover:bg-red-100 rounded-lg transition-colors border border-red-100"
-                            title="Deactivate tag permanently"
-                          >
-                            <X className="w-3.5 h-3.5" /> Disable
-                          </button>
-                        ) : tag.status === 'DISABLED' ? (
-                          <button
-                            onClick={() => updateTagStatusMutation.mutate({ epc: tag.epc, status: 'AVAILABLE' })}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-green-700 bg-green-50 hover:bg-green-100 rounded-lg transition-colors border border-green-100"
-                          >
-                            <Power className="w-3.5 h-3.5" /> Re-enable
-                          </button>
-                        ) : (
-                          <span className="text-xs text-gray-400">Locked (In Use)</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+      {/* ENCODE MODAL */}
+      {isEncodeModalOpen && selectedSample && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl w-full max-w-sm shadow-2xl overflow-hidden animate-in zoom-in-95">
+            <div className="p-6 border-b border-gray-100 bg-orange-50/50">
+              <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                <SmartphoneNfc className="w-6 h-6 text-orange-600" />
+                RFID Hot-Swap
+              </h3>
+              <p className="text-xs text-gray-500 mt-1">Assigning hard tag to {selectedSample.sample_id}</p>
+            </div>
+            <div className="p-8 space-y-5">
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-1.5">Scan Tag ID *</label>
+                <input
+                  type="text"
+                  value={encodeRfid}
+                  onChange={e => setEncodeRfid(e.target.value)}
+                  placeholder="EPC Code..."
+                  className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl text-sm font-mono outline-none focus:ring-2 focus:ring-orange-500 transition-all"
+                  autoFocus
+                />
+              </div>
+            </div>
+            <div className="p-6 border-t border-gray-100 flex justify-end gap-3 bg-gray-50/50">
+              <button onClick={() => { setIsEncodeModalOpen(false); setEncodeRfid(''); }} className="px-6 py-2.5 text-gray-600 font-bold uppercase text-xs">Cancel</button>
+              <button
+                onClick={() => encodeMutation.mutate({ id: selectedSample.id, rfid_epc: encodeRfid })}
+                disabled={encodeMutation.isPending || !encodeRfid}
+                className="px-8 py-2.5 bg-orange-600 text-white rounded-2xl font-bold shadow-lg shadow-orange-200 hover:bg-orange-700 disabled:opacity-50 transition-all"
+              >
+                {encodeMutation.isPending ? 'Linking...' : 'Confirm Link'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TRANSFER MODAL */}
+      {isTransferModalOpen && selectedSample && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden animate-in zoom-in-95">
+            <div className="p-6 border-b border-gray-100 bg-blue-50/50">
+              <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                <ArrowRightLeft className="w-6 h-6 text-blue-600" />
+                Quick Transfer
+              </h3>
+              <p className="text-xs text-gray-500 mt-1">Handoff {selectedSample.sample_id} to another user.</p>
+            </div>
+            <div className="p-8 space-y-5">
+                <div>
+                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-1.5">Recipient Merchandiser *</label>
+                    <select value={transferToUserId} onChange={e => setTransferToUserId(e.target.value)} className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl text-sm">
+                        <option value="">Select recipient...</option>
+                        {usersList.map((u: any) => <option key={u.id} value={u.id}>{u.name} ({u.role})</option>)}
+                    </select>
+                </div>
+                <div>
+                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-1.5">Tag Verification (Scan Required)</label>
+                    <input 
+                      type="text" 
+                      readOnly 
+                      value={selectedSample.rfid_epc || 'N/A'} 
+                      className="w-full px-4 py-3 bg-gray-100 border border-gray-200 rounded-2xl text-sm font-mono text-gray-500" 
+                    />
+                </div>
+                <div>
+                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-1.5">Action Reason</label>
+                    <textarea value={transferNotes} onChange={e => setTransferNotes(e.target.value)} placeholder="Why are you transferring this?" className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl text-sm" rows={2}></textarea>
+                </div>
+            </div>
+            <div className="p-6 border-t border-gray-100 flex justify-end gap-3">
+              <button onClick={() => setIsTransferModalOpen(false)} className="px-6 py-2.5 text-gray-600 font-bold uppercase text-xs">Close</button>
+              <button 
+                onClick={() => transferMutation.mutate({ id: selectedSample.id, to_user_id: transferToUserId, reason: transferNotes, rfid_epc: selectedSample.rfid_epc || '' })} 
+                disabled={transferMutation.isPending || !transferToUserId || !transferNotes}
+                className="px-8 py-2.5 bg-blue-600 text-white rounded-2xl font-bold shadow-lg hover:bg-blue-700 disabled:opacity-50"
+              >
+                Send Request
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* STORE MODAL */}
+      {isStoreModalOpen && selectedSample && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden animate-in zoom-in-95">
+            <div className="p-6 border-b border-gray-100 bg-emerald-50/50">
+              <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                <MapPin className="w-6 h-6 text-emerald-600" />
+                Bin Placement
+              </h3>
+              <p className="text-xs text-gray-500 mt-1">Finalizing storage for {selectedSample.sample_id}</p>
+            </div>
+            <div className="p-8 space-y-5">
+                <div>
+                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-1.5">Target Location Rack/Shelf/Bin *</label>
+                    <select value={storeLocationId} onChange={e => setStoreLocationId(e.target.value)} className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl text-sm">
+                        <option value="">Choose available bin...</option>
+                        {locationsList.map((loc: any) => <option key={loc.id} value={loc.id}>RACK {loc.rack} : SH {loc.shelf} : BIN {loc.bin_id}</option>)}
+                    </select>
+                </div>
+            </div>
+            <div className="p-6 border-t border-gray-100 flex justify-end gap-3">
+              <button onClick={() => setIsStoreModalOpen(false)} className="px-6 py-2.5 text-gray-600 font-bold uppercase text-xs">Back</button>
+              <button 
+                onClick={() => storeMutation.mutate({ id: selectedSample.id, location_id: storeLocationId, rfid_epc: selectedSample.rfid_epc || '' })} 
+                disabled={storeMutation.isPending || !storeLocationId}
+                className="px-8 py-2.5 bg-emerald-600 text-white rounded-2xl font-bold shadow-lg hover:bg-emerald-700 disabled:opacity-50"
+              >
+                Confirm Storage
+              </button>
+            </div>
           </div>
         </div>
       )}

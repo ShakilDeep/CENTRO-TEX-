@@ -464,6 +464,160 @@ export class SampleLifecycleService {
             return updated;
         });
     }
+
+    /**
+     * Pull Request Transfer — A requester (Locator/Merchandiser) signals they want a sample.
+     * Creates a transfer FROM the current owner TO the requester.
+     * The current owner will see this in their 'outgoing-pending' list and must confirm.
+     */
+    async pullRequestTransfer(sampleId: string, requesterId: string, reason: string, deviceId?: string) {
+        return prisma.$transaction(async (tx) => {
+            const sample = await tx.samples.findUnique({
+                where: { id: sampleId },
+                include: { current_owner: { select: { id: true, name: true } } }
+            });
+            if (!sample) throw new Error('Sample not found');
+            if (!sample.current_owner_id) throw new Error('Sample has no current owner');
+            if (sample.current_owner_id === requesterId) throw new Error('You already own this sample');
+            if (sample.current_status !== 'WITH_MERCHANDISER' && sample.current_status !== 'AT_DISPATCH') {
+                throw new Error('Sample is not available for pull request (must be WITH_MERCHANDISER or AT_DISPATCH)');
+            }
+
+            // Check for duplicate pending pull request
+            const existingRequest = await tx.sampleTransfers.findFirst({
+                where: {
+                    sample_id: sampleId,
+                    to_user_id: requesterId,
+                    status: 'PENDING'
+                }
+            });
+            if (existingRequest) throw new Error('A pull request for this sample is already pending');
+
+            // Create transfer FROM owner TO requester — owner must confirm
+            const transfer = await tx.sampleTransfers.create({
+                data: {
+                    sample_id: sampleId,
+                    from_user_id: sample.current_owner_id,
+                    to_user_id: requesterId,
+                    reason,
+                    status: 'PENDING'
+                }
+            });
+
+            await tx.sampleMovements.create({
+                data: {
+                    sample_id: sampleId,
+                    user_id: requesterId,
+                    device_id: deviceId,
+                    action_type: 'TRANSFER_INITIATED',
+                    previous_status: sample.current_status,
+                    new_status: sample.current_status,
+                    notes: `Pull request from user ID: ${requesterId} — awaiting owner confirmation`
+                }
+            });
+
+            // Notify the current owner about the pull request
+            const requester = await tx.users.findUnique({ where: { id: requesterId } });
+            await tx.notifications.create({
+                data: {
+                    user_id: sample.current_owner_id,
+                    sample_id: sampleId,
+                    type: 'TRANSFER_REQUEST',
+                    title: 'Sample Pull Request',
+                    message: `${requester?.name || 'A user'} is requesting Sample #${sample.sample_id} from you. Please confirm if received.`
+                }
+            });
+
+            return transfer;
+        });
+    }
+
+    /**
+     * Confirm Handover — The OWNER confirms (Yes) or declines (No) a pull request.
+     * This is the "Received — Yes or No?" action in the Merchandiser journey.
+     * confirmed=true  → transfer accepted, ownership moves to requester
+     * confirmed=false → transfer rejected, sample stays with owner
+     */
+    async confirmHandover(transferId: string, ownerId: string, confirmed: boolean, deviceId?: string) {
+        return prisma.$transaction(async (tx) => {
+            const transfer = await tx.sampleTransfers.findUnique({
+                where: { id: transferId },
+                include: { sample: true, to_user: { select: { id: true, name: true } } }
+            });
+            if (!transfer) throw new Error('Transfer not found');
+            if (transfer.status !== 'PENDING') throw new Error('Transfer is no longer pending');
+            // Validate the confirmer is the FROM user (the owner being requested from)
+            if (transfer.from_user_id !== ownerId) throw new Error('Only the sample owner can confirm this handover');
+
+            if (confirmed) {
+                await tx.sampleTransfers.update({
+                    where: { id: transferId },
+                    data: { status: 'ACCEPTED', resolved_at: new Date() }
+                });
+
+                const updated = await tx.samples.update({
+                    where: { id: transfer.sample_id },
+                    data: {
+                        current_status: 'WITH_MERCHANDISER',
+                        current_owner_id: transfer.to_user_id
+                    }
+                });
+
+                await tx.sampleMovements.create({
+                    data: {
+                        sample_id: transfer.sample_id,
+                        user_id: ownerId,
+                        device_id: deviceId,
+                        action_type: 'TRANSFER_ACCEPTED',
+                        previous_status: transfer.sample.current_status,
+                        new_status: 'WITH_MERCHANDISER',
+                        notes: `Handover confirmed by owner. Sample transferred to ${transfer.to_user?.name || transfer.to_user_id}`
+                    }
+                });
+
+                await tx.notifications.create({
+                    data: {
+                        user_id: transfer.to_user_id,
+                        sample_id: transfer.sample_id,
+                        type: 'TRANSFER_ACCEPTED',
+                        title: 'Pull Request Confirmed!',
+                        message: `Your request for Sample #${transfer.sample.sample_id} has been confirmed. It is now in your possession.`
+                    }
+                });
+
+                return updated;
+            } else {
+                await tx.sampleTransfers.update({
+                    where: { id: transferId },
+                    data: { status: 'REJECTED', resolved_at: new Date() }
+                });
+
+                await tx.sampleMovements.create({
+                    data: {
+                        sample_id: transfer.sample_id,
+                        user_id: ownerId,
+                        device_id: deviceId,
+                        action_type: 'TRANSFER_REJECTED',
+                        previous_status: transfer.sample.current_status,
+                        new_status: transfer.sample.current_status,
+                        notes: `Handover declined by owner`
+                    }
+                });
+
+                await tx.notifications.create({
+                    data: {
+                        user_id: transfer.to_user_id,
+                        sample_id: transfer.sample_id,
+                        type: 'TRANSFER_REJECTED',
+                        title: 'Pull Request Declined',
+                        message: `The owner declined your request for Sample #${transfer.sample.sample_id}.`
+                    }
+                });
+
+                return transfer.sample;
+            }
+        });
+    }
 }
 
 export default new SampleLifecycleService();

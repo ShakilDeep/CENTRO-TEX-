@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { 
   Package, Search, Plus, RefreshCw, SmartphoneNfc, 
   ArrowRightLeft, MapPin, X, ChevronDown, ChevronUp,
-  LayoutDashboard, User, Calendar, Database
+  LayoutDashboard, User, Calendar, Database, ImagePlus, Trash2
 } from 'lucide-react';
 import { samplesApi, api, rfidApi, transfersApi, storageApi } from '../api';
 import type { Sample } from '../api/samples';
@@ -47,6 +47,8 @@ export default function Admin() {
   
   // Form States
   const [createFormData, setCreateFormData] = useState({ buyer_id: '', sample_type: 'Proto', description: '', photo_url: '' });
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const photoInputRef = useRef<HTMLInputElement>(null);
   const [encodeRfid, setEncodeRfid] = useState('');
   const [transferToUserId, setTransferToUserId] = useState('');
   const [transferNotes, setTransferNotes] = useState('');
@@ -55,6 +57,24 @@ export default function Admin() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { addToast } = useToastActions();
+
+  const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const result = reader.result as string;
+      setPhotoPreview(result);
+      setCreateFormData(prev => ({ ...prev, photo_url: result }));
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleRemovePhoto = () => {
+    setPhotoPreview(null);
+    setCreateFormData(prev => ({ ...prev, photo_url: '' }));
+    if (photoInputRef.current) photoInputRef.current.value = '';
+  };
 
   // Queries
   const { data: response, isLoading, refetch } = useQuery({
@@ -92,6 +112,7 @@ export default function Admin() {
       queryClient.invalidateQueries({ queryKey: ['admin-samples-queue'] });
       setIsCreateModalOpen(false);
       setCreateFormData({ buyer_id: '', sample_type: 'Proto', description: '', photo_url: '' });
+      handleRemovePhoto();
       addToast({ type: 'success', title: 'Success', message: 'Sample created successfully. Now encode RFID.' });
     },
     onError: (err: any) => addToast({ type: 'error', title: 'Creation Failed', message: err.response?.data?.message || err.message })
@@ -373,7 +394,7 @@ export default function Admin() {
                 <Plus className="w-6 h-6 text-blue-600" />
                 New Floor Sample
               </h3>
-              <button onClick={() => setIsCreateModalOpen(false)} className="text-gray-400 hover:text-gray-600 bg-white p-1.5 rounded-full shadow-sm border border-gray-100">
+              <button onClick={() => { setIsCreateModalOpen(false); handleRemovePhoto(); }} className="text-gray-400 hover:text-gray-600 bg-white p-1.5 rounded-full shadow-sm border border-gray-100">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -415,10 +436,41 @@ export default function Admin() {
                   className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl text-sm outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all"
                 />
               </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-1.5">Sample Image</label>
+                <input
+                  ref={photoInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handlePhotoSelect}
+                />
+                {photoPreview ? (
+                  <div className="relative rounded-2xl overflow-hidden border border-gray-200 bg-gray-50">
+                    <img src={photoPreview} alt="Sample preview" className="w-full h-40 object-cover" />
+                    <button
+                      type="button"
+                      onClick={handleRemovePhoto}
+                      className="absolute top-2 right-2 p-1.5 bg-white/90 rounded-full shadow border border-gray-200 text-red-500 hover:text-red-700 transition-colors"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => photoInputRef.current?.click()}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-3 border-2 border-dashed border-gray-200 rounded-2xl text-sm text-gray-500 font-medium hover:border-blue-400 hover:text-blue-500 hover:bg-blue-50/50 transition-all"
+                  >
+                    <ImagePlus className="w-4 h-4" />
+                    Upload Image
+                  </button>
+                )}
+              </div>
             </div>
             <div className="p-6 border-t border-gray-100 flex justify-end gap-3 bg-gray-50/50">
               <button
-                onClick={() => setIsCreateModalOpen(false)}
+                onClick={() => { setIsCreateModalOpen(false); handleRemovePhoto(); }}
                 className="px-6 py-2.5 text-gray-600 font-bold hover:text-gray-900"
               >
                 Cancel
@@ -475,45 +527,72 @@ export default function Admin() {
 
       {/* TRANSFER MODAL */}
       {isTransferModalOpen && selectedSample && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 animate-in fade-in">
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
           <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden animate-in zoom-in-95">
-            <div className="p-6 border-b border-gray-100 bg-blue-50/50">
-              <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-                <ArrowRightLeft className="w-6 h-6 text-blue-600" />
-                Quick Transfer
-              </h3>
-              <p className="text-xs text-gray-500 mt-1">Handoff {selectedSample.sample_id} to another user.</p>
+            <div className="p-6 border-b border-gray-100 bg-blue-50/50 flex justify-between items-center">
+              <div>
+                <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                  <ArrowRightLeft className="w-6 h-6 text-blue-600" />
+                  Quick Transfer
+                </h3>
+                <p className="text-xs text-gray-500 mt-1">Handoff <span className="font-mono font-semibold">{selectedSample.sample_id}</span> to another user.</p>
+              </div>
+              <button
+                onClick={() => { setIsTransferModalOpen(false); setTransferToUserId(''); setTransferNotes(''); }}
+                className="text-gray-400 hover:text-gray-600 bg-white p-1.5 rounded-full shadow-sm border border-gray-100 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
             </div>
             <div className="p-8 space-y-5">
-                <div>
-                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-1.5">Recipient Merchandiser *</label>
-                    <select value={transferToUserId} onChange={e => setTransferToUserId(e.target.value)} className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl text-sm">
-                        <option value="">Select recipient...</option>
-                        {usersList.map((u: any) => <option key={u.id} value={u.id}>{u.name} ({u.role})</option>)}
-                    </select>
-                </div>
-                <div>
-                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-1.5">Tag Verification (Scan Required)</label>
-                    <input 
-                      type="text" 
-                      readOnly 
-                      value={selectedSample.rfid_epc || 'N/A'} 
-                      className="w-full px-4 py-3 bg-gray-100 border border-gray-200 rounded-2xl text-sm font-mono text-gray-500" 
-                    />
-                </div>
-                <div>
-                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-1.5">Action Reason</label>
-                    <textarea value={transferNotes} onChange={e => setTransferNotes(e.target.value)} placeholder="Why are you transferring this?" className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl text-sm" rows={2}></textarea>
-                </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-1.5">Recipient *</label>
+                <select
+                  value={transferToUserId}
+                  onChange={e => setTransferToUserId(e.target.value)}
+                  className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl text-sm outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all"
+                >
+                  <option value="">Select recipient...</option>
+                  {usersList
+                    .filter((u: any) => u.id !== user?.id)
+                    .map((u: any) => (
+                      <option key={u.id} value={u.id}>{u.name} — {u.role}</option>
+                    ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-1.5">Tag Verification</label>
+                <input
+                  type="text"
+                  readOnly
+                  value={selectedSample.rfid_epc || '— No tag linked —'}
+                  className="w-full px-4 py-3 bg-gray-100 border border-gray-200 rounded-2xl text-sm font-mono text-gray-500 cursor-not-allowed"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-1.5">Reason *</label>
+                <textarea
+                  value={transferNotes}
+                  onChange={e => setTransferNotes(e.target.value)}
+                  placeholder="Why are you transferring this sample?"
+                  rows={2}
+                  className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl text-sm outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all resize-none"
+                />
+              </div>
             </div>
-            <div className="p-6 border-t border-gray-100 flex justify-end gap-3">
-              <button onClick={() => setIsTransferModalOpen(false)} className="px-6 py-2.5 text-gray-600 font-bold uppercase text-xs">Close</button>
-              <button 
-                onClick={() => transferMutation.mutate({ id: selectedSample.id, to_user_id: transferToUserId, reason: transferNotes, rfid_epc: selectedSample.rfid_epc || '' })} 
-                disabled={transferMutation.isPending || !transferToUserId || !transferNotes}
-                className="px-8 py-2.5 bg-blue-600 text-white rounded-2xl font-bold shadow-lg hover:bg-blue-700 disabled:opacity-50"
+            <div className="p-6 border-t border-gray-100 flex justify-end gap-3 bg-gray-50/50">
+              <button
+                onClick={() => { setIsTransferModalOpen(false); setTransferToUserId(''); setTransferNotes(''); }}
+                className="px-6 py-2.5 text-gray-600 font-bold hover:text-gray-900 transition-colors"
               >
-                Send Request
+                Cancel
+              </button>
+              <button
+                onClick={() => transferMutation.mutate({ id: selectedSample.id, to_user_id: transferToUserId, reason: transferNotes, rfid_epc: selectedSample.rfid_epc || '' })}
+                disabled={transferMutation.isPending || !transferToUserId || !transferNotes.trim()}
+                className="px-8 py-2.5 bg-blue-600 text-white rounded-2xl font-bold shadow-lg shadow-blue-200 hover:bg-blue-700 disabled:opacity-50 transition-all active:scale-95"
+              >
+                {transferMutation.isPending ? 'Sending...' : 'Send Request'}
               </button>
             </div>
           </div>
@@ -522,32 +601,67 @@ export default function Admin() {
 
       {/* STORE MODAL */}
       {isStoreModalOpen && selectedSample && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 animate-in fade-in">
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
           <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden animate-in zoom-in-95">
-            <div className="p-6 border-b border-gray-100 bg-emerald-50/50">
-              <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-                <MapPin className="w-6 h-6 text-emerald-600" />
-                Bin Placement
-              </h3>
-              <p className="text-xs text-gray-500 mt-1">Finalizing storage for {selectedSample.sample_id}</p>
+            <div className="p-6 border-b border-gray-100 bg-emerald-50/50 flex justify-between items-center">
+              <div>
+                <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                  <MapPin className="w-6 h-6 text-emerald-600" />
+                  Bin Placement
+                </h3>
+                <p className="text-xs text-gray-500 mt-1">Finalizing storage for <span className="font-mono font-semibold">{selectedSample.sample_id}</span></p>
+              </div>
+              <button
+                onClick={() => { setIsStoreModalOpen(false); setStoreLocationId(''); }}
+                className="text-gray-400 hover:text-gray-600 bg-white p-1.5 rounded-full shadow-sm border border-gray-100 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
             </div>
             <div className="p-8 space-y-5">
-                <div>
-                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-1.5">Target Location Rack/Shelf/Bin *</label>
-                    <select value={storeLocationId} onChange={e => setStoreLocationId(e.target.value)} className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl text-sm">
-                        <option value="">Choose available bin...</option>
-                        {locationsList.map((loc: any) => <option key={loc.id} value={loc.id}>RACK {loc.rack} : SH {loc.shelf} : BIN {loc.bin_id}</option>)}
-                    </select>
-                </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-1.5">Tag Verification</label>
+                <input
+                  type="text"
+                  readOnly
+                  value={selectedSample.rfid_epc || '— No tag linked —'}
+                  className="w-full px-4 py-3 bg-gray-100 border border-gray-200 rounded-2xl text-sm font-mono text-gray-500 cursor-not-allowed"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-1.5">Target Bin *</label>
+                <select
+                  value={storeLocationId}
+                  onChange={e => setStoreLocationId(e.target.value)}
+                  className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl text-sm outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white transition-all"
+                >
+                  <option value="">Choose available bin...</option>
+                  {locationsList
+                    .filter((loc: any) => loc.is_active !== false && loc.current_count < loc.max_capacity)
+                    .map((loc: any) => (
+                      <option key={loc.id} value={loc.id}>
+                        RACK {loc.rack} · SH {loc.shelf} · BIN {loc.bin_id} — {loc.current_count}/{loc.max_capacity} used
+                      </option>
+                    ))}
+                </select>
+                {locationsList.filter((loc: any) => loc.is_active !== false && loc.current_count < loc.max_capacity).length === 0 && (
+                  <p className="text-xs text-red-500 mt-1.5 font-medium">No available bins. All storage locations are full.</p>
+                )}
+              </div>
             </div>
-            <div className="p-6 border-t border-gray-100 flex justify-end gap-3">
-              <button onClick={() => setIsStoreModalOpen(false)} className="px-6 py-2.5 text-gray-600 font-bold uppercase text-xs">Back</button>
-              <button 
-                onClick={() => storeMutation.mutate({ id: selectedSample.id, location_id: storeLocationId, rfid_epc: selectedSample.rfid_epc || '' })} 
-                disabled={storeMutation.isPending || !storeLocationId}
-                className="px-8 py-2.5 bg-emerald-600 text-white rounded-2xl font-bold shadow-lg hover:bg-emerald-700 disabled:opacity-50"
+            <div className="p-6 border-t border-gray-100 flex justify-end gap-3 bg-gray-50/50">
+              <button
+                onClick={() => { setIsStoreModalOpen(false); setStoreLocationId(''); }}
+                className="px-6 py-2.5 text-gray-600 font-bold hover:text-gray-900 transition-colors"
               >
-                Confirm Storage
+                Cancel
+              </button>
+              <button
+                onClick={() => storeMutation.mutate({ id: selectedSample.id, location_id: storeLocationId, rfid_epc: selectedSample.rfid_epc || '' })}
+                disabled={storeMutation.isPending || !storeLocationId}
+                className="px-8 py-2.5 bg-emerald-600 text-white rounded-2xl font-bold shadow-lg shadow-emerald-200 hover:bg-emerald-700 disabled:opacity-50 transition-all active:scale-95"
+              >
+                {storeMutation.isPending ? 'Storing...' : 'Confirm Storage'}
               </button>
             </div>
           </div>

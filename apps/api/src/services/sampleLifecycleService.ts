@@ -536,8 +536,9 @@ export class SampleLifecycleService {
             if (!sample.current_owner_id) throw new Error('Sample has no current owner');
             // Note: In demo mode, the backend always injects the admin user, so we do NOT
             // block self-requests — the flow still works end-to-end for demonstration.
-            if (sample.current_status !== 'WITH_MERCHANDISER' && sample.current_status !== 'AT_DISPATCH') {
-                throw new Error('Sample is not available for pull request (must be WITH_MERCHANDISER or AT_DISPATCH)');
+            const pullRequestableStatuses = ['IN_TRANSIT_TO_DISPATCH', 'AT_DISPATCH', 'WITH_MERCHANDISER', 'IN_STORAGE'];
+            if (!pullRequestableStatuses.includes(sample.current_status)) {
+                throw new Error('Sample is not available for pull request');
             }
 
             // Check for duplicate pending pull request

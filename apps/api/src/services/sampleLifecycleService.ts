@@ -164,32 +164,50 @@ export class SampleLifecycleService {
         });
     }
 
-    // 1.5 Encode RFID (New)
+    // 1.5 Encode RFID — supports hot-swap (re-assigning a tag from one sample to another)
     async encodeRfid(sampleId: string, userId: string, rfidEpc: string, deviceId?: string) {
         return prisma.$transaction(async (tx) => {
             const sample = await tx.samples.findUnique({ where: { id: sampleId } });
             if (!sample) throw new Error('Sample not found');
-            
-            // Check if tag is available
+
             const rfidTag = await tx.rfidTags.findUnique({ where: { epc: rfidEpc } });
-            if (rfidTag?.status === 'ACTIVE' && rfidTag.current_sample_id !== sampleId) {
-                throw new Error('RFID tag is already active on another sample');
+
+            // Hot-swap: if the tag is active on a different sample, unlink it first
+            if (rfidTag?.status === 'ACTIVE' && rfidTag.current_sample_id && rfidTag.current_sample_id !== sampleId) {
+                const oldSample = await tx.samples.findUnique({ where: { id: rfidTag.current_sample_id } });
+
+                await tx.samples.update({
+                    where: { id: rfidTag.current_sample_id },
+                    data: { rfid_epc: null }
+                });
+
+                if (oldSample) {
+                    await tx.sampleMovements.create({
+                        data: {
+                            sample_id: rfidTag.current_sample_id,
+                            user_id: userId,
+                            device_id: deviceId,
+                            action_type: 'RFID_UNLINKED',
+                            previous_status: oldSample.current_status,
+                            new_status: oldSample.current_status,
+                            rfid_epc: rfidEpc,
+                            notes: `Tag hot-swapped to ${sample.sample_id}`
+                        }
+                    });
+                }
             }
 
-            // Update Sample
             const updated = await tx.samples.update({
                 where: { id: sampleId },
                 data: { rfid_epc: rfidEpc }
             });
 
-            // Update Tag
             await tx.rfidTags.upsert({
                 where: { epc: rfidEpc },
                 update: { status: 'ACTIVE', current_sample_id: sampleId, last_assigned_at: new Date() },
                 create: { epc: rfidEpc, status: 'ACTIVE', current_sample_id: sampleId, last_assigned_at: new Date() }
             });
 
-            // Log Movement
             await tx.sampleMovements.create({
                 data: {
                     sample_id: sampleId,
@@ -199,7 +217,9 @@ export class SampleLifecycleService {
                     previous_status: sample.current_status,
                     new_status: sample.current_status,
                     rfid_epc: rfidEpc,
-                    notes: 'RFID tag encoded manually'
+                    notes: rfidTag?.current_sample_id && rfidTag.current_sample_id !== sampleId
+                        ? `Tag hot-swapped from another sample`
+                        : 'RFID tag encoded manually'
                 }
             });
 
@@ -337,7 +357,8 @@ export class SampleLifecycleService {
         return prisma.$transaction(async (tx) => {
             const sample = await tx.samples.findUnique({ where: { id: sampleId } });
             if (!sample) throw new Error('Sample not found');
-            if (sample.current_status !== 'WITH_MERCHANDISER' && sample.current_status !== 'AT_DISPATCH' && sample.current_status !== 'IN_STORAGE') throw new Error('Invalid status transition');
+            const transferableStatuses = ['IN_TRANSIT_TO_DISPATCH', 'AT_DISPATCH', 'WITH_MERCHANDISER', 'IN_STORAGE'];
+            if (!transferableStatuses.includes(sample.current_status)) throw new Error('Invalid status transition');
             // Only validate RFID when BOTH the sample has a tag AND the caller provides one
             if (sample.rfid_epc && rfidEpc && sample.rfid_epc !== rfidEpc) throw new Error('Scanned tag does not match this sample');
             if (fromUserId === toUserId) throw new Error('Cannot transfer to yourself');

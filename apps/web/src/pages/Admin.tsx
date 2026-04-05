@@ -11,6 +11,8 @@ import { useAuthStore } from '../stores/authStore';
 import { useToastActions } from '../stores/uiStore';
 import { useNavigate } from 'react-router-dom';
 
+const ACTIONABLE_STATUSES = ['IN_TRANSIT_TO_DISPATCH', 'AT_DISPATCH', 'WITH_MERCHANDISER', 'IN_STORAGE'];
+
 const SAMPLE_STATUS_COLORS: Record<string, string> = {
   IN_TRANSIT_TO_DISPATCH: 'bg-blue-100 text-blue-800 border-blue-200',
   AT_DISPATCH: 'bg-blue-100 text-blue-800 border-blue-200',
@@ -320,30 +322,25 @@ export default function Admin() {
                             >
                               <SmartphoneNfc className="w-3.5 h-3.5" /> ENCODE
                             </button>
-                          ) : (
+                          ) : ACTIONABLE_STATUSES.includes(sample.current_status) ? (
                             <>
-                              {sample.current_status !== 'PENDING_TRANSFER_APPROVAL' && (
-                                <>
-                                  <button 
-                                    onClick={(e) => { e.stopPropagation(); handleAction(sample, 'transfer'); }} 
-                                    className="bg-blue-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold shadow-sm hover:bg-blue-700 transition-all flex items-center gap-1.5"
-                                  >
-                                    <ArrowRightLeft className="w-3.5 h-3.5" /> TRANSFER
-                                  </button>
-                                  <button 
-                                    onClick={(e) => { e.stopPropagation(); handleAction(sample, 'store'); }} 
-                                    className="bg-emerald-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold shadow-sm hover:bg-emerald-700 transition-all flex items-center gap-1.5"
-                                  >
-                                    <MapPin className="w-3.5 h-3.5" /> STORE
-                                  </button>
-                                </>
-                              )}
-                              {sample.current_status === 'PENDING_TRANSFER_APPROVAL' && (
-                                <span className="text-[10px] font-bold text-indigo-500 uppercase italic px-2 py-1 bg-indigo-50 rounded-md">
-                                  Action Locked
-                                </span>
-                              )}
+                              <button 
+                                onClick={(e) => { e.stopPropagation(); handleAction(sample, 'transfer'); }} 
+                                className="bg-blue-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold shadow-sm hover:bg-blue-700 transition-all flex items-center gap-1.5"
+                              >
+                                <ArrowRightLeft className="w-3.5 h-3.5" /> TRANSFER
+                              </button>
+                              <button 
+                                onClick={(e) => { e.stopPropagation(); handleAction(sample, 'store'); }} 
+                                className="bg-emerald-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold shadow-sm hover:bg-emerald-700 transition-all flex items-center gap-1.5"
+                              >
+                                <MapPin className="w-3.5 h-3.5" /> STORE
+                              </button>
                             </>
+                          ) : (
+                            <span className="text-[10px] font-bold text-indigo-500 uppercase italic px-2 py-1 bg-indigo-50 rounded-md">
+                              Action Locked
+                            </span>
                           )}
                           {expandedRow === sample.id ? <ChevronUp className="w-4 h-4 text-gray-400 ml-1" /> : <ChevronDown className="w-4 h-4 text-gray-400 ml-1" />}
                         </div>

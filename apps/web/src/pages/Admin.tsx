@@ -115,6 +115,8 @@ export default function Admin() {
         addToast({ type: 'success', title: 'Transfer Initiated', message: 'Transfer request sent.' });
         setIsTransferModalOpen(false);
         setSelectedSample(null);
+        setTransferToUserId('');
+        setTransferNotes('');
     },
     onError: (err: any) => addToast({ type: 'error', title: 'Transfer Failed', message: err.response?.data?.message || err.message })
   });
@@ -126,6 +128,7 @@ export default function Admin() {
         addToast({ type: 'success', title: 'Stored', message: 'Sample moved to storage.' });
         setIsStoreModalOpen(false);
         setSelectedSample(null);
+        setStoreLocationId('');
     },
     onError: (err: any) => addToast({ type: 'error', title: 'Storage Failed', message: err.response?.data?.message || err.message })
   });
@@ -140,9 +143,20 @@ export default function Admin() {
 
   const handleAction = (sample: Sample, action: 'encode' | 'transfer' | 'store') => {
     setSelectedSample(sample);
-    if (action === 'encode') setIsEncodeModalOpen(true);
-    if (action === 'transfer') setIsTransferModalOpen(true);
-    if (action === 'store') setIsStoreModalOpen(true);
+    // Reset relevant states before opening modal
+    if (action === 'transfer') {
+      setTransferToUserId('');
+      setTransferNotes('');
+      setIsTransferModalOpen(true);
+    }
+    if (action === 'store') {
+      setStoreLocationId('');
+      setIsStoreModalOpen(true);
+    }
+    if (action === 'encode') {
+      setEncodeRfid('');
+      setIsEncodeModalOpen(true);
+    }
   };
 
   return (
@@ -158,10 +172,11 @@ export default function Admin() {
           <p className="text-gray-500 mt-1">Digitalize merchandiser floor counter work: Create, Encode, Transfer, and Store.</p>
         </div>
 
-        <div className="flex gap-3">
+        <div className="flex items-center gap-2">
+          
           <button
             onClick={() => refetch()}
-            className="p-2.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-colors"
+            className="p-2.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-colors border border-transparent hover:border-blue-100"
             title="Refresh Queue"
           >
             <RefreshCw className="w-5 h-5" />
@@ -286,18 +301,27 @@ export default function Admin() {
                             </button>
                           ) : (
                             <>
-                              <button 
-                                onClick={(e) => { e.stopPropagation(); handleAction(sample, 'transfer'); }} 
-                                className="bg-blue-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold shadow-sm hover:bg-blue-700 transition-all flex items-center gap-1.5"
-                              >
-                                <ArrowRightLeft className="w-3.5 h-3.5" /> TRANSFER
-                              </button>
-                              <button 
-                                onClick={(e) => { e.stopPropagation(); handleAction(sample, 'store'); }} 
-                                className="bg-emerald-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold shadow-sm hover:bg-emerald-700 transition-all flex items-center gap-1.5"
-                              >
-                                <MapPin className="w-3.5 h-3.5" /> STORE
-                              </button>
+                              {sample.current_status !== 'PENDING_TRANSFER_APPROVAL' && (
+                                <>
+                                  <button 
+                                    onClick={(e) => { e.stopPropagation(); handleAction(sample, 'transfer'); }} 
+                                    className="bg-blue-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold shadow-sm hover:bg-blue-700 transition-all flex items-center gap-1.5"
+                                  >
+                                    <ArrowRightLeft className="w-3.5 h-3.5" /> TRANSFER
+                                  </button>
+                                  <button 
+                                    onClick={(e) => { e.stopPropagation(); handleAction(sample, 'store'); }} 
+                                    className="bg-emerald-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold shadow-sm hover:bg-emerald-700 transition-all flex items-center gap-1.5"
+                                  >
+                                    <MapPin className="w-3.5 h-3.5" /> STORE
+                                  </button>
+                                </>
+                              )}
+                              {sample.current_status === 'PENDING_TRANSFER_APPROVAL' && (
+                                <span className="text-[10px] font-bold text-indigo-500 uppercase italic px-2 py-1 bg-indigo-50 rounded-md">
+                                  Action Locked
+                                </span>
+                              )}
                             </>
                           )}
                           {expandedRow === sample.id ? <ChevronUp className="w-4 h-4 text-gray-400 ml-1" /> : <ChevronDown className="w-4 h-4 text-gray-400 ml-1" />}

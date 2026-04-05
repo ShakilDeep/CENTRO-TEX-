@@ -105,6 +105,16 @@ export const transfersApi = {
     confirmHandover: async (transferId: string, confirmed: boolean): Promise<ApiResponse<any>> => {
         const response = await api.post(`/api/v1/transfers/confirm-handover/${transferId}`, { confirmed });
         return response.data;
+    },
+
+    /**
+     * Pick / Self-Assign — Locator "Assign to Me" action.
+     * Directly moves an IN_STORAGE sample to the current authenticated user.
+     * No approval flow — the backend uses request.user.id as the new owner.
+     */
+    pick: async (sampleId: string): Promise<ApiResponse<any>> => {
+        const response = await api.post(`/api/v1/transfers/pick/${sampleId}`);
+        return response.data;
     }
 };
 

@@ -1,3 +1,4 @@
+import React, { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import NotificationPanel from './NotificationPanel';
 import { useClerk } from '@clerk/clerk-react';
@@ -17,12 +18,35 @@ const Layout = ({ children }: LayoutProps) => {
   const location = useLocation();
   const { signOut } = useClerk();
 
-  const isPath = (path: string) => location.pathname === path;
+  const isPath = (path: string) => {
+    const [pathname, search] = path.split('?');
+    if (search) {
+      return location.pathname === pathname && location.search === `?${search}`;
+    }
+    return location.pathname === path;
+  };
 
-  // Journey context
-  const isAdminJourney = location.pathname.startsWith('/admin');
-  const isMerchandiserJourney = location.pathname.startsWith('/merchandiser');
-  const isLocatorJourney = location.pathname.startsWith('/locator');
+  const [activeJourney, setActiveJourney] = React.useState<string>(() => sessionStorage.getItem('centro_journey') || 'hub');
+
+  React.useEffect(() => {
+    if (location.pathname.startsWith('/admin')) {
+      sessionStorage.setItem('centro_journey', 'admin');
+      setActiveJourney('admin');
+    } else if (location.pathname.startsWith('/merchandiser')) {
+      sessionStorage.setItem('centro_journey', 'merchandiser');
+      setActiveJourney('merchandiser');
+    } else if (location.pathname.startsWith('/locator')) {
+      sessionStorage.setItem('centro_journey', 'locator');
+      setActiveJourney('locator');
+    } else {
+      sessionStorage.setItem('centro_journey', 'hub');
+      setActiveJourney('hub');
+    }
+  }, [location.pathname]);
+
+  const isAdminJourney = activeJourney === 'admin';
+  const isMerchandiserJourney = activeJourney === 'merchandiser';
+  const isLocatorJourney = activeJourney === 'locator';
 
   const getJourneyName = () => {
     if (isAdminJourney) return 'Floor Admin';
@@ -34,111 +58,112 @@ const Layout = ({ children }: LayoutProps) => {
   const getMenuItems = () => {
     if (isAdminJourney) {
       return [
-        { name: 'Floor Queue', path: '/admin', icon: LayoutDashboard },
-        { name: 'RFID Encoding', path: '/admin', icon: SmartphoneNfc },
         { name: 'Reports', path: '/reports', icon: BarChart3 }
       ];
     }
     if (isMerchandiserJourney) {
       return [
-        { name: 'My Current Flow', path: '/merchandiser', icon: Truck },
-        { name: 'Storage Access', path: '/inventory', icon: Database },
-        { name: 'Reports', path: '/reports', icon: BarChart3 }
+        { name: 'My Current Flow', path: '/merchandiser?tab=flow', icon: Truck },
+        { name: 'Storage Access', path: '/merchandiser?tab=storage', icon: Database },
+        { name: 'Reports', path: '/merchandiser?tab=reports', icon: BarChart3 }
       ];
     }
     if (isLocatorJourney) {
       return [
-        { name: 'Item Search', path: '/locator', icon: SearchCode },
-        { name: 'Warehouse View', path: '/inventory', icon: Warehouse },
-        { name: 'Logistics Logs', path: '/reports', icon: BarChart3 }
+        { name: 'Item Search', path: '/locator?tab=finder', icon: SearchCode },
+        { name: 'Warehouse View', path: '/locator?tab=warehouse', icon: Warehouse },
+        { name: 'Logistics Logs', path: '/locator?tab=logs', icon: BarChart3 }
       ];
     }
     return [
       { name: 'Digital Hub', path: '/', icon: LayoutDashboard },
       { name: 'Dispatch Logs', path: '/dispatch', icon: Truck },
       { name: 'Global Inventory', path: '/inventory', icon: Database },
-      { name: 'System Reports', path: '/reports', icon: BarChart3 }
+      { name: 'System Reports', path: '/reports', icon: BarChart3 },
     ];
   };
 
+  // Switch Tab always exits to the Digital Hub from any journey
+  const getSwitchTabDestination = () => '/';
+
+  const switchTabDestination = getSwitchTabDestination();
   const menuItems = getMenuItems();
 
   return (
     <div className="h-screen flex overflow-hidden bg-[#F8FAFC] text-slate-900 font-['Inter']">
       
       {/* Left Sidebar - Premium Glassy Look */}
-      <div className="w-72 bg-white border-r border-slate-100 flex flex-col shadow-[10px_0_40px_-20px_rgba(37,99,235,0.05)] z-30">
+      <div className="w-[320px] bg-white flex flex-col z-30">
         
         {/* Logo/Branding */}
-        <div className="h-24 flex items-center px-8 text-neutral-800">
-          <Link to="/" className="flex items-center gap-4 group">
-            <div className="w-10 h-10 bg-blue-600 rounded-2xl flex items-center justify-center rotate-3 group-hover:rotate-6 transition-transform shadow-xl shadow-blue-200">
-               <img src={logoUrl} alt="" className="w-6 h-6 object-contain brightness-0 invert" />
-            </div>
+        <div className="h-32 flex items-center px-10 text-neutral-800">
+          <Link to="/" className="flex items-center gap-5 group">
+            <img
+              src="/centro-logo.png"
+              alt="Centro Tex Logo"
+              className="w-14 h-14 rounded-full object-cover shadow-2xl shadow-red-500/20 group-hover:scale-105 transition-transform duration-300"
+            />
             <div>
-               <h1 className="font-black text-xl tracking-tighter text-slate-900 uppercase">
-                 Centro<span className="text-blue-600">Flow</span>
+               <h1 className="font-bold text-2xl tracking-tighter text-slate-900">
+                 CENTRO<span className="text-red-600">FLOW</span>
                </h1>
-               <div className="flex items-center gap-1.5">
-                  <div className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse"></div>
-                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{getJourneyName()}</span>
+               <div className="flex items-center gap-1.5 mt-1">
+                  <div className="w-2 h-2 bg-[#10B981] rounded-full"></div>
+                  <span className="text-[11px] font-bold text-slate-400 uppercase tracking-[0.25em]">{getJourneyName()}</span>
                </div>
             </div>
           </Link>
         </div>
 
         {/* Navigation Section */}
-        <nav className="flex-1 px-6 py-4 space-y-8 overflow-y-auto">
-          
+        <nav className="flex-1 px-8 py-6 space-y-10 overflow-y-auto custom-scrollbar">
+
+          {/* Switch Tab — always visible on all pages */}
           <div>
-            <h3 className="px-3 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-4">
-              Operational Journey
+            <h3 className="px-3 text-[11px] font-bold text-slate-400 uppercase tracking-[0.1em] mb-6">
+              Journey Flow
             </h3>
-            <div className="space-y-1.5">
-              {menuItems.map((item) => {
-                const active = isPath(item.path);
-                return (
-                  <Link
-                    key={item.name}
-                    to={item.path}
-                    className={`flex items-center gap-3.5 px-4 py-3.5 rounded-2xl text-sm font-bold transition-all ${
-                      active
-                        ? 'bg-blue-600 text-white shadow-xl shadow-blue-100 translate-x-1'
-                        : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'
-                    }`}
-                  >
-                    <item.icon className="w-5 h-5" />
-                    <span>{item.name}</span>
-                  </Link>
-                );
-              })}
+            <div className="space-y-1">
+              <Link
+                to={switchTabDestination}
+                id="switch-tab-btn"
+                className="flex items-center gap-4 px-5 py-4 rounded-[1.25rem] text-[15px] font-black text-blue-600 bg-blue-50/50 hover:bg-blue-100 transition-all border border-blue-100/50 mb-6 group shadow-sm"
+              >
+                <LayoutDashboard className="w-6 h-6 text-blue-600 group-hover:rotate-12 transition-transform duration-300" />
+                <span className="tracking-tight">Switch Tab</span>
+              </Link>
+
+              {/* Journey-specific menu items — only when in a journey */}
+              {activeJourney !== 'hub' && menuItems.map((item) => (
+                <Link
+                  key={item.path}
+                  to={item.path}
+                  className={`flex items-center gap-4 px-5 py-4 rounded-[1.25rem] text-[15px] font-bold transition-all ${
+                    isPath(item.path)
+                      ? 'bg-slate-900 text-white shadow-xl shadow-slate-200'
+                      : 'text-slate-400 hover:text-slate-900 hover:bg-slate-50'
+                  }`}
+                >
+                  <item.icon className={`w-6 h-6 ${isPath(item.path) ? 'text-white' : 'text-slate-400'}`} />
+                  <span>{item.name}</span>
+                </Link>
+              ))}
             </div>
           </div>
 
-          {/* Hub Switcher */}
-          <div className="pt-4 border-t border-slate-50">
-             <Link
-                to="/"
-                className="flex items-center gap-3.5 px-4 py-3.5 rounded-2xl text-sm font-black text-blue-600 bg-blue-50/50 hover:bg-blue-100 transition-all border border-blue-100/50"
-              >
-                <ArrowLeftRight className="w-5 h-5" />
-                <span>Switch Journey</span>
-              </Link>
-          </div>
-
           <div>
-            <h3 className="px-3 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-4">
+            <h3 className="px-3 text-[11px] font-bold text-slate-400 uppercase tracking-[0.1em] mb-6">
               Global Platform
             </h3>
             <Link
               to="/admin"
-              className={`flex items-center gap-3.5 px-4 py-3.5 rounded-2xl text-sm font-bold transition-all ${
+              className={`flex items-center gap-4 px-5 py-4 rounded-[1.25rem] text-[15px] font-bold transition-all ${
                 isPath('/admin')
-                  ? 'bg-slate-900 text-white'
-                  : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'
+                  ? 'bg-slate-900 text-white shadow-xl shadow-slate-200'
+                  : 'text-slate-400 hover:text-slate-900 hover:bg-slate-50'
               }`}
             >
-              <Settings className="w-5 h-5" />
+              <Settings className="w-6 h-6" />
               <span>Settings</span>
             </Link>
           </div>

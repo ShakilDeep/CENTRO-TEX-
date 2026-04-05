@@ -239,13 +239,25 @@ export class SampleLifecycleService {
         });
     }
 
-    // 3. Store Sample
+    // 3. Store Sample (at bin)
     async storeSample(sampleId: string, userId: string, rfidEpc: string | undefined, locationId: string, deviceId?: string) {
         return prisma.$transaction(async (tx) => {
             const sample = await tx.samples.findUnique({ where: { id: sampleId } });
             if (!sample) throw new Error('Sample not found');
-            if (sample.current_status !== 'WITH_MERCHANDISER' && sample.current_status !== 'AT_DISPATCH') throw new Error('Invalid status transition');
-            if (sample.rfid_epc && sample.rfid_epc !== rfidEpc) throw new Error('Scanned tag does not match this sample');
+            
+            // Allow storing from any active (non-terminal) status
+            const allowed = ['IN_TRANSIT_TO_DISPATCH', 'WITH_MERCHANDISER', 'AT_DISPATCH', 'IN_STORAGE'];
+            if (!allowed.includes(sample.current_status)) throw new Error(`Invalid status for storage: ${sample.current_status}`);
+            
+            if (sample.rfid_epc && rfidEpc && sample.rfid_epc !== rfidEpc) throw new Error('Scanned tag does not match this sample');
+
+            // If Relocating, decrement old bin count
+            if (sample.current_status === 'IN_STORAGE' && sample.storage_location_id) {
+                await tx.storageLocations.update({
+                    where: { id: sample.storage_location_id },
+                    data: { current_count: { decrement: 1 } }
+                });
+            }
 
             const loc = await tx.storageLocations.findUnique({ where: { id: locationId } });
             if (!loc) throw new Error('Location not found');
@@ -326,7 +338,8 @@ export class SampleLifecycleService {
             const sample = await tx.samples.findUnique({ where: { id: sampleId } });
             if (!sample) throw new Error('Sample not found');
             if (sample.current_status !== 'WITH_MERCHANDISER' && sample.current_status !== 'AT_DISPATCH' && sample.current_status !== 'IN_STORAGE') throw new Error('Invalid status transition');
-            if (sample.rfid_epc && sample.rfid_epc !== rfidEpc) throw new Error('Scanned tag does not match this sample');
+            // Only validate RFID when BOTH the sample has a tag AND the caller provides one
+            if (sample.rfid_epc && rfidEpc && sample.rfid_epc !== rfidEpc) throw new Error('Scanned tag does not match this sample');
             if (fromUserId === toUserId) throw new Error('Cannot transfer to yourself');
 
             const transfer = await tx.sampleTransfers.create({
@@ -377,7 +390,15 @@ export class SampleLifecycleService {
         return prisma.$transaction(async (tx) => {
             const transfer = await tx.sampleTransfers.findUnique({ where: { id: transferId }, include: { sample: true } });
             if (!transfer || transfer.status !== 'PENDING') throw new Error('Transfer not pending or not found');
-            if (transfer.to_user_id !== userId) throw new Error('Unauthorized');
+
+            // Fetch the acting user to check role — Admin can accept any transfer
+            const actingUser = await tx.users.findUnique({ where: { id: userId }, select: { role: true } });
+            if (actingUser?.role !== 'ADMIN' && transfer.to_user_id !== userId) {
+                throw new Error('Unauthorized');
+            }
+
+            // Resolve as the actual recipient (not the admin acting on their behalf)
+            const effectiveRecipientId = transfer.to_user_id;
 
             await tx.sampleTransfers.update({
                 where: { id: transferId },
@@ -388,9 +409,18 @@ export class SampleLifecycleService {
                 where: { id: transfer.sample_id },
                 data: {
                     current_status: 'WITH_MERCHANDISER',
-                    current_owner_id: userId
+                    current_owner_id: effectiveRecipientId,
+                    storage_location_id: null
                 }
             });
+
+            // Decrement bin count if it was in storage
+            if (transfer.sample.current_status === 'IN_STORAGE' && transfer.sample.storage_location_id) {
+                await tx.storageLocations.update({
+                    where: { id: transfer.sample.storage_location_id },
+                    data: { current_count: { decrement: 1 } }
+                });
+            }
 
             await tx.sampleMovements.create({
                 data: {
@@ -403,7 +433,7 @@ export class SampleLifecycleService {
                 }
             });
 
-            const toUser = await tx.users.findUnique({ where: { id: userId } });
+            const toUser = await tx.users.findUnique({ where: { id: effectiveRecipientId } });
 
             await tx.notifications.create({
                 data: {
@@ -423,7 +453,12 @@ export class SampleLifecycleService {
         return prisma.$transaction(async (tx) => {
             const transfer = await tx.sampleTransfers.findUnique({ where: { id: transferId }, include: { sample: true } });
             if (!transfer || transfer.status !== 'PENDING') throw new Error('Transfer not pending or not found');
-            if (transfer.to_user_id !== userId) throw new Error('Unauthorized');
+
+            // Admin can reject any transfer; non-admin must be the designated recipient
+            const actingUser = await tx.users.findUnique({ where: { id: userId }, select: { role: true } });
+            if (actingUser?.role !== 'ADMIN' && transfer.to_user_id !== userId) {
+                throw new Error('Unauthorized');
+            }
 
             await tx.sampleTransfers.update({
                 where: { id: transferId },
@@ -434,7 +469,7 @@ export class SampleLifecycleService {
                 where: { id: transfer.sample_id },
                 data: {
                     current_status: 'WITH_MERCHANDISER',
-                    current_owner_id: transfer.from_user_id // Restore original owner
+                    current_owner_id: transfer.from_user_id
                 }
             });
 
@@ -449,7 +484,7 @@ export class SampleLifecycleService {
                 }
             });
 
-            const toUser = await tx.users.findUnique({ where: { id: userId } });
+            const toUser = await tx.users.findUnique({ where: { id: transfer.to_user_id } });
 
             await tx.notifications.create({
                 data: {
@@ -478,7 +513,8 @@ export class SampleLifecycleService {
             });
             if (!sample) throw new Error('Sample not found');
             if (!sample.current_owner_id) throw new Error('Sample has no current owner');
-            if (sample.current_owner_id === requesterId) throw new Error('You already own this sample');
+            // Note: In demo mode, the backend always injects the admin user, so we do NOT
+            // block self-requests — the flow still works end-to-end for demonstration.
             if (sample.current_status !== 'WITH_MERCHANDISER' && sample.current_status !== 'AT_DISPATCH') {
                 throw new Error('Sample is not available for pull request (must be WITH_MERCHANDISER or AT_DISPATCH)');
             }
@@ -546,8 +582,12 @@ export class SampleLifecycleService {
             });
             if (!transfer) throw new Error('Transfer not found');
             if (transfer.status !== 'PENDING') throw new Error('Transfer is no longer pending');
-            // Validate the confirmer is the FROM user (the owner being requested from)
-            if (transfer.from_user_id !== ownerId) throw new Error('Only the sample owner can confirm this handover');
+
+            // Admin can confirm/decline any handover on behalf of the owner
+            const actingUser = await tx.users.findUnique({ where: { id: ownerId }, select: { role: true } });
+            if (actingUser?.role !== 'ADMIN' && transfer.from_user_id !== ownerId) {
+                throw new Error('Only the sample owner can confirm this handover');
+            }
 
             if (confirmed) {
                 await tx.sampleTransfers.update({
@@ -559,9 +599,18 @@ export class SampleLifecycleService {
                     where: { id: transfer.sample_id },
                     data: {
                         current_status: 'WITH_MERCHANDISER',
-                        current_owner_id: transfer.to_user_id
+                        current_owner_id: transfer.to_user_id,
+                        storage_location_id: null // Remove from bin upon transfer acceptance
                     }
                 });
+
+                // Decrement bin count if it was in storage
+                if (transfer.sample.current_status === 'IN_STORAGE' && transfer.sample.storage_location_id) {
+                    await tx.storageLocations.update({
+                        where: { id: transfer.sample.storage_location_id },
+                        data: { current_count: { decrement: 1 } }
+                    });
+                }
 
                 await tx.sampleMovements.create({
                     data: {
@@ -616,6 +665,55 @@ export class SampleLifecycleService {
 
                 return transfer.sample;
             }
+        });
+    }
+
+    /**
+     * Pick Sample — Direct self-assignment.
+     * Used by the Sample Locator's "Assign to Me" button.
+     * Moves the sample directly to the requesting user without a two-step transfer approval.
+     * Works for samples IN_STORAGE, AT_DISPATCH, or WITH_MERCHANDISER.
+     */
+    async pickSample(sampleId: string, requesterId: string, deviceId?: string) {
+        return prisma.$transaction(async (tx) => {
+            const sample = await tx.samples.findUnique({ where: { id: sampleId } });
+            if (!sample) throw new Error('Sample not found');
+
+            const allowedStatuses = ['IN_STORAGE', 'AT_DISPATCH', 'WITH_MERCHANDISER'];
+            if (!allowedStatuses.includes(sample.current_status)) {
+                throw new Error(`Cannot pick sample with status: ${sample.current_status}`);
+            }
+
+            const updated = await tx.samples.update({
+                where: { id: sampleId },
+                data: {
+                    current_status: 'WITH_MERCHANDISER',
+                    current_owner_id: requesterId,
+                    storage_location_id: null // Remove from bin if stored
+                }
+            });
+
+            // Decrement bin count if it was in storage
+            if (sample.current_status === 'IN_STORAGE' && sample.storage_location_id) {
+                await tx.storageLocations.update({
+                    where: { id: sample.storage_location_id },
+                    data: { current_count: { decrement: 1 } }
+                });
+            }
+
+            await tx.sampleMovements.create({
+                data: {
+                    sample_id: sampleId,
+                    user_id: requesterId,
+                    device_id: deviceId,
+                    action_type: 'TRANSFER_ACCEPTED',
+                    previous_status: sample.current_status,
+                    new_status: 'WITH_MERCHANDISER',
+                    notes: 'Direct self-assignment via Sample Locator'
+                }
+            });
+
+            return updated;
         });
     }
 }

@@ -72,15 +72,14 @@ export default async function transferRoutes(fastify: FastifyInstance) {
             const user = request.user as AccessJwtPayload;
             const { prisma } = require('../lib/prisma');
 
-            let whereClause: any = { status: 'PENDING' };
-
-            // Admin sees all; Merchandiser/Locator see only their incoming transfers
-            if (user.role !== 'ADMIN') {
-                whereClause.to_user_id = user.id;
-            }
-
+            // ALWAYS filter by to_user_id — every role, including Admin.
+            // Admin managing outgoing pull-requests uses /outgoing-pending instead.
+            // Mixing the two caused admin to accidentally accept pull-requests via the incoming popup.
             const transfers = await prisma.sampleTransfers.findMany({
-                where: whereClause,
+                where: {
+                    status: 'PENDING',
+                    to_user_id: user.id
+                },
                 include: {
                     sample: { select: { sample_id: true, sample_type: true, description: true } },
                     from_user: { select: { name: true, email: true } }
@@ -91,6 +90,25 @@ export default async function transferRoutes(fastify: FastifyInstance) {
             return { data: transfers };
         } catch (error: any) {
             reply.code(400).send({ error: 'Failed to fetch pending transfers', message: error.message });
+        }
+    });
+
+    // ─── Pick / Self-Assign (Locator "Assign to Me") ──────────────────────────
+    // Directly moves a sample to the requesting user — no approval required.
+    // Used by the Sample Locator for IN_STORAGE samples.
+    fastify.post('/pick/:sampleId', {
+        preHandler: [fastify.authenticate]
+    }, async (request, reply) => {
+        try {
+            const user = request.user as AccessJwtPayload;
+            const { sampleId } = request.params as { sampleId: string };
+            const deviceId = (request.headers['x-device-id'] as string) || undefined;
+
+            const sample = await sampleLifecycleService.pickSample(sampleId, user.id, deviceId);
+
+            return { message: 'Sample assigned to you successfully.', data: sample };
+        } catch (error: any) {
+            reply.code(400).send({ error: 'Bad Request', message: error.message });
         }
     });
 

@@ -25,7 +25,7 @@ export class AzureADService {
       clientId: config?.clientId || process.env.AZURE_AD_CLIENT_ID || '',
       clientSecret: config?.clientSecret || process.env.AZURE_AD_CLIENT_SECRET || '',
       tenantId: config?.tenantId || process.env.AZURE_AD_TENANT_ID || '',
-      redirectUri: config?.redirectUri || process.env.AZURE_AD_REDIRECT_URI || 'http://localhost:3000/auth/sso/callback',
+      redirectUri: config?.redirectUri || process.env.AZURE_AD_REDIRECT_URI || 'http://localhost/auth/sso/callback',
       scopes: config?.scopes || (process.env.AZURE_AD_SCOPES || 'https://graph.microsoft.com/.default').split(',')
     };
 

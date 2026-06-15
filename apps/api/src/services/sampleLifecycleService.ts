@@ -13,13 +13,25 @@ export class SampleLifecycleService {
         sender_origin?: string;
         receiver_name?: string;
         purpose?: string;
-        created_by: string; // User ID
+        created_by: string;
         device_id?: string;
+        factory_id?: string;
+        assigned_merchandiser_id?: string;
     }) {
         const nextSampleId = await sampleIdService.generateSampleId();
         const nextEntryNumber = await sampleIdService.generateEntryNumber();
 
         return prisma.$transaction(async (tx) => {
+            // Resolve receiver display name from the assigned merchandiser
+            let resolvedReceiverName = data.receiver_name;
+            if (data.assigned_merchandiser_id && !resolvedReceiverName) {
+                const merch = await tx.users.findUnique({
+                    where: { id: data.assigned_merchandiser_id },
+                    select: { name: true }
+                });
+                resolvedReceiverName = merch?.name ?? undefined;
+            }
+
             const sample = await tx.samples.create({
                 data: {
                     sample_id: nextSampleId,
@@ -28,12 +40,14 @@ export class SampleLifecycleService {
                     sample_type: data.sample_type,
                     description: data.description,
                     sender_origin: data.sender_origin,
-                    receiver_name: data.receiver_name,
+                    receiver_name: resolvedReceiverName,
                     purpose: data.purpose,
                     photo_url: data.photo_url,
                     created_by: data.created_by,
                     current_status: 'IN_TRANSIT_TO_DISPATCH',
                     current_owner_id: data.created_by,
+                    factory_id: data.factory_id,
+                    assigned_merchandiser_id: data.assigned_merchandiser_id,
                 }
             });
 
@@ -45,10 +59,103 @@ export class SampleLifecycleService {
                     action_type: 'CREATED',
                     previous_status: 'NONE',
                     new_status: 'IN_TRANSIT_TO_DISPATCH',
+                    notes: resolvedReceiverName ? `Assigned receiver: ${resolvedReceiverName}` : undefined,
                 }
             });
 
+            // ST-DISP-001: notify assigned merchandiser immediately
+            if (data.assigned_merchandiser_id) {
+                await tx.notifications.create({
+                    data: {
+                        user_id: data.assigned_merchandiser_id,
+                        sample_id: sample.id,
+                        type: 'SAMPLE_ASSIGNED',
+                        title: 'New Sample Assigned',
+                        message: `Sample #${sample.sample_id} has been assigned to you and is in transit to Dispatch.`,
+                    }
+                });
+            }
+
             return sample;
+        });
+    }
+
+    /**
+     * ST-DISP-002 — Reassign a sample to a different merchandiser while it is still at Dispatch.
+     * Valid only for IN_TRANSIT_TO_DISPATCH or AT_DISPATCH statuses.
+     */
+    async reassignSample(sampleId: string, dispatchUserId: string, newMerchandiserId: string) {
+        return prisma.$transaction(async (tx) => {
+            const sample = await tx.samples.findUnique({ where: { id: sampleId } });
+            if (!sample) throw new Error('Sample not found');
+
+            const reassignableStatuses = ['IN_TRANSIT_TO_DISPATCH', 'AT_DISPATCH'];
+            if (!reassignableStatuses.includes(sample.current_status)) {
+                throw new Error(
+                    `Cannot reassign: sample status is "${sample.current_status}". ` +
+                    'Reassignment is only allowed while the sample is at Dispatch.'
+                );
+            }
+
+            const newMerch = await tx.users.findUnique({
+                where: { id: newMerchandiserId },
+                select: { id: true, name: true, role: true, is_active: true }
+            });
+            if (!newMerch || newMerch.role !== 'MERCHANDISER') {
+                throw new Error('Target user must be an active merchandiser');
+            }
+            if (!newMerch.is_active) {
+                throw new Error('Target merchandiser account is not active');
+            }
+            if (sample.assigned_merchandiser_id === newMerchandiserId) {
+                throw new Error('Sample is already assigned to this merchandiser');
+            }
+
+            const previousMerchandiserId = sample.assigned_merchandiser_id;
+
+            const updated = await tx.samples.update({
+                where: { id: sampleId },
+                data: {
+                    assigned_merchandiser_id: newMerchandiserId,
+                    receiver_name: newMerch.name,
+                }
+            });
+
+            await tx.sampleMovements.create({
+                data: {
+                    sample_id: sampleId,
+                    user_id: dispatchUserId,
+                    action_type: 'REASSIGNED',
+                    previous_status: sample.current_status,
+                    new_status: sample.current_status,
+                    notes: `Reassigned to ${newMerch.name} (${newMerchandiserId})` +
+                        (previousMerchandiserId ? ` from ${previousMerchandiserId}` : ''),
+                }
+            });
+
+            await tx.notifications.create({
+                data: {
+                    user_id: newMerchandiserId,
+                    sample_id: sampleId,
+                    type: 'SAMPLE_ASSIGNED',
+                    title: 'Sample Assigned to You',
+                    message: `Sample #${sample.sample_id} has been reassigned to you by Dispatch.`,
+                }
+            });
+
+            if (previousMerchandiserId && previousMerchandiserId !== newMerchandiserId) {
+                await tx.notifications.create({
+                    data: {
+                        user_id: previousMerchandiserId,
+                        sample_id: sampleId,
+                        type: 'SAMPLE_ASSIGNED',
+                        title: 'Sample Reassigned',
+                        message: `Sample #${sample.sample_id} has been reassigned away from you to ${newMerch.name}.`,
+                    }
+                });
+            }
+
+            return updated;
         });
     }
 

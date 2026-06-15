@@ -45,6 +45,7 @@ export const authorize = (allowedRoles: UserRole[]) => {
 export const requireAdmin = authorize(['ADMIN']);
 export const requireDispatchOrAdmin = authorize(['ADMIN', 'DISPATCH']);
 export const requireMerchandiserOrAdmin = authorize(['ADMIN', 'MERCHANDISER']);
+export const requireDispatchOrMerchandiserOrAdmin = authorize(['ADMIN', 'DISPATCH', 'MERCHANDISER']);
 
 // Helper for JWT actions
 export const logAuthOperation = (

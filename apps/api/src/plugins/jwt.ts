@@ -10,6 +10,7 @@ import {
   requireAdmin,
   requireDispatchOrAdmin,
   requireMerchandiserOrAdmin,
+  requireDispatchOrMerchandiserOrAdmin,
   logAuthOperation,
   getTokenHash
 } from '../middleware/auth';
@@ -31,6 +32,7 @@ declare module 'fastify' {
     requireAdmin(request: FastifyRequest, reply: any): Promise<void>;
     requireDispatchOrAdmin(request: FastifyRequest, reply: any): Promise<void>;
     requireMerchandiserOrAdmin(request: FastifyRequest, reply: any): Promise<void>;
+    requireDispatchOrMerchandiserOrAdmin(request: FastifyRequest, reply: any): Promise<void>;
   }
 }
 
@@ -132,6 +134,7 @@ export default fp(async function jwtPlugin(fastify: FastifyInstance) {
   fastify.decorate('requireAdmin', requireAdmin);
   fastify.decorate('requireDispatchOrAdmin', requireDispatchOrAdmin);
   fastify.decorate('requireMerchandiserOrAdmin', requireMerchandiserOrAdmin);
+  fastify.decorate('requireDispatchOrMerchandiserOrAdmin', requireDispatchOrMerchandiserOrAdmin);
 
   fastify.addHook('onRequest', async (request: FastifyRequest, reply) => {
     const authHeader = request.headers.authorization;

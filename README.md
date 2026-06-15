@@ -156,6 +156,27 @@ Middleware enforces strict role checks (Admin, Dispatch, Merchandiser) before al
 
 ---
 
+## 🗄️ Database
+
+| Property | Value |
+|---|---|
+| **Engine** | SQLite (WAL mode) |
+| **File** | `apps/api/prisma/data/centrotex.db` |
+| **Schema** | `apps/api/prisma/schema.prisma` |
+| **Seed script** | `apps/api/prisma/seed.ts` |
+
+The pre-seeded development database is committed to the repository at `apps/api/prisma/data/centrotex.db`. It includes factory records, storage locations, and sample user accounts so the app works out of the box after cloning.
+
+To reset the database to a clean seeded state at any time:
+
+```powershell
+cd apps/api
+npx prisma db push --accept-data-loss
+npx tsx prisma/seed.ts
+```
+
+---
+
 ## 🌐 Endpoints
 *   🖥️ **Web Dashboard:** `http://localhost:5173`
 *   ⚙️ **API Gateway:** `http://localhost` (port 80; run the API elevated on Windows if binding fails)

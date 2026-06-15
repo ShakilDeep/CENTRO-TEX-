@@ -7,12 +7,25 @@ import { prisma } from '../lib/prisma';
 export default async function samplesRoutes(fastify: FastifyInstance) {
   // Create sample
   fastify.post('/', {
-    preHandler: [fastify.authenticate, fastify.requireMerchandiserOrAdmin],
+    preHandler: [fastify.authenticate, fastify.requireDispatchOrMerchandiserOrAdmin],
     schema: { body: createSampleSchema }
   }, async (request, reply) => {
     try {
       const user = request.user as AccessJwtPayload;
-      const { buyer_id, sample_type, description, photo_url, sender_origin, receiver_name, purpose } = request.body as any;
+      const { buyer_id, sample_type, description, photo_url, sender_origin, receiver_name,
+              purpose, factory_id, assigned_merchandiser_id } = request.body as any;
+
+      // Dispatch role must always specify a target merchandiser
+      if (user.role === 'DISPATCH' && !assigned_merchandiser_id) {
+        return reply.code(400).send({ error: 'Bad Request', message: 'assigned_merchandiser_id is required for Dispatch role' });
+      }
+
+      if (assigned_merchandiser_id) {
+        const merch = await prisma.users.findUnique({ where: { id: assigned_merchandiser_id } });
+        if (!merch || merch.role !== 'MERCHANDISER') {
+          return reply.code(400).send({ error: 'Bad Request', message: 'Assigned user must be a merchandiser' });
+        }
+      }
 
       const sample = await sampleLifecycleService.createSample({
         buyer_id,
@@ -22,14 +35,13 @@ export default async function samplesRoutes(fastify: FastifyInstance) {
         sender_origin,
         receiver_name,
         purpose,
+        factory_id,
+        assigned_merchandiser_id,
         created_by: user.id,
         device_id: (request.headers['x-device-id'] as string) || undefined
       });
 
-      return {
-        message: 'Sample created successfully',
-        data: sample
-      };
+      return { message: 'Sample created successfully', data: sample };
     } catch (error: any) {
       reply.code(400).send({ error: 'Bad Request', message: error.message });
     }
@@ -48,15 +60,37 @@ export default async function samplesRoutes(fastify: FastifyInstance) {
     }
   });
 
-  // Get active buyers
+  // ERP master-data dropdowns — must be declared before /:id to avoid param capture
   fastify.get('/buyers', {
     preHandler: [fastify.authenticate]
-  }, async (request, reply) => {
+  }, async (_request, reply) => {
     try {
       const buyers = await prisma.buyers.findMany({ where: { is_active: true } });
       return { data: buyers };
     } catch (error: any) {
       reply.code(400).send({ error: 'Failed to fetch buyers', message: error.message });
+    }
+  });
+
+  fastify.get('/factories', {
+    preHandler: [fastify.authenticate]
+  }, async (_request, reply) => {
+    try {
+      const factories = await prisma.factories.findMany({ where: { is_active: true } });
+      return { data: factories };
+    } catch (error: any) {
+      reply.code(400).send({ error: 'Failed to fetch factories', message: error.message });
+    }
+  });
+
+  fastify.get('/merchandisers', {
+    preHandler: [fastify.authenticate]
+  }, async (_request, reply) => {
+    try {
+      const merchandisers = await prisma.users.findMany({ where: { role: 'MERCHANDISER', is_active: true } });
+      return { data: merchandisers };
+    } catch (error: any) {
+      reply.code(400).send({ error: 'Failed to fetch merchandisers', message: error.message });
     }
   });
 

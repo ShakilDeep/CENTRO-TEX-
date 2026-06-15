@@ -88,6 +88,23 @@ model Buyers {
 }
 
 // ─────────────────────────────────────────────
+// Factories — Master data for factory dropdown
+// ─────────────────────────────────────────────
+model Factories {
+  id         String    @id @default(cuid())
+  name       String    @unique
+  code       String?   @unique
+  location   String?
+  is_active  Boolean   @default(true)
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+
+  samples    Samples[]
+
+  @@map("factories")
+}
+
+// ─────────────────────────────────────────────
 // RFID Tags — EPC tag lifecycle
 // ─────────────────────────────────────────────
 model RfidTags {
@@ -140,6 +157,7 @@ model Samples {
   current_owner_id    String
   rfid_epc            String?   @unique       // Linked EPC (nullable until tagged)
   storage_location_id String?
+  factory_id          String?
 
   // Step 1 additions
   entry_number        String    @unique @default(cuid()) // ENT-2024-XXXX
@@ -155,6 +173,7 @@ model Samples {
 
   // Relations
   buyer              Buyers             @relation(fields: [buyer_id], references: [id])
+  factory            Factories?         @relation(fields: [factory_id], references: [id])
   creator            Users              @relation("SampleCreator", fields: [created_by], references: [id])
   current_owner      Users              @relation("SampleOwner", fields: [current_owner_id], references: [id])
   rfid_tag           RfidTags?
@@ -168,6 +187,8 @@ model Samples {
   @@index([current_owner_id])
   @@index([buyer_id])
   @@index([rfid_epc])
+  @@index([factory_id])
+  @@index([assigned_merchandiser_id])
 }
 
 // ─────────────────────────────────────────────

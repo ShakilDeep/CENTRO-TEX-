@@ -49,11 +49,22 @@ export const createSampleSchema = {
   properties: {
     buyer_id: { type: 'string' },
     sample_type: { type: 'string', minLength: 1 },
-    description: { type: 'string' },
+    description: { type: 'string', minLength: 1 },
     photo_url: { type: 'string' },
     sender_origin: { type: 'string' },
     receiver_name: { type: 'string' },
-    purpose: { type: 'string' }
+    purpose: { type: 'string' },
+    factory_id: { type: 'string' },
+    assigned_merchandiser_id: { type: 'string' }
+  }
+};
+
+/** ST-DISP-002 — reassign a sample to a different merchandiser while at Dispatch */
+export const reassignSampleSchema = {
+  type: 'object',
+  required: ['new_merchandiser_id'],
+  properties: {
+    new_merchandiser_id: { type: 'string', minLength: 1 }
   }
 };
 

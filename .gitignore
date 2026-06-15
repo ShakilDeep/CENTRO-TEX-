@@ -37,13 +37,14 @@ lerna-debug.log*
 *~
 .DS_Store
 
-# Database
-*.db
+# Database — exclude all DB files except the seeded development database
 *.db-journal
 *.db-shm
 *.db-wal
 *.sqlite
 *.sqlite3
+*.db
+!apps/api/prisma/data/centrotex.db
 
 # Temporary files
 tmp/

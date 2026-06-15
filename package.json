@@ -1,0 +1,25 @@
+{
+  "name": "centro-tex-2.0",
+  "version": "1.0.0",
+  "description": "Centro Sample Tracking System with Dispatch Module",
+  "private": true,
+  "workspaces": [
+    "apps/api",
+    "apps/web"
+  ],
+  "scripts": {
+    "dev": "npm --workspace=apps/api run dev & npm --workspace=apps/web run dev",
+    "build": "npm --workspace=apps/api run build && npm --workspace=apps/web run build",
+    "start": "npm --workspace=apps/api run start",
+    "test": "npm --workspace=apps/api run test",
+    "lint": "npm --workspace=apps/api run lint && npm --workspace=apps/web run lint"
+  },
+  "keywords": [
+    "dispatch",
+    "sample",
+    "tracking",
+    "rfid"
+  ],
+  "author": "",
+  "license": "MIT"
+}

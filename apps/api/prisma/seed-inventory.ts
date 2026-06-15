@@ -111,7 +111,7 @@ async function main() {
                     description,
                     buyer_name: buyer,
                     office,
-                    qr_code_url: `http://localhost:3000/samples/${sampleId}`,
+                    qr_code_url: `http://localhost/samples/${sampleId}`,
                     location_id: location.id,
                     checked_out_by: checkoutUser?.id ?? null,
                     checked_out_at: isCheckedOut ? new Date() : null,

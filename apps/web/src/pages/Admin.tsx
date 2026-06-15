@@ -48,7 +48,7 @@ export default function Admin() {
   const [selectedSample, setSelectedSample] = useState<Sample | null>(null);
   
   // Form States
-  const [createFormData, setCreateFormData] = useState({ buyer_id: '', sample_type: 'Proto', description: '', photo_url: '' });
+  const [createFormData, setCreateFormData] = useState({ buyer_id: '', sample_type: 'Proto', description: '', photo_url: '', factory_id: '', assigned_merchandiser_id: '', purpose: 'OTHER' });
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
   const [encodeRfid, setEncodeRfid] = useState('');
@@ -90,6 +90,18 @@ export default function Admin() {
   });
   const buyersList = buyersRes?.data || [];
 
+  const { data: factoriesRes } = useQuery({
+    queryKey: ['factories'],
+    queryFn: () => api.get('/api/v1/samples/factories').then(r => r.data)
+  });
+  const factoriesList = factoriesRes?.data || [];
+
+  const { data: merchandisersRes } = useQuery({
+    queryKey: ['merchandisers'],
+    queryFn: () => api.get('/api/v1/samples/merchandisers').then(r => r.data)
+  });
+  const merchandisersList = merchandisersRes?.data || [];
+
   const { data: usersResponse } = useQuery({
     queryKey: ['users-list'],
     queryFn: async () => {
@@ -113,7 +125,7 @@ export default function Admin() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-samples-queue'] });
       setIsCreateModalOpen(false);
-      setCreateFormData({ buyer_id: '', sample_type: 'Proto', description: '', photo_url: '' });
+      setCreateFormData({ buyer_id: '', sample_type: 'Proto', description: '', photo_url: '', factory_id: '', assigned_merchandiser_id: '', purpose: 'OTHER' });
       handleRemovePhoto();
       addToast({ type: 'success', title: 'Success', message: 'Sample created successfully. Now encode RFID.' });
     },
@@ -384,14 +396,14 @@ export default function Admin() {
 
       {/* CREATE SAMPLE MODAL */}
       {isCreateModalOpen && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 animate-in fade-in duration-200" onMouseDown={(e) => { if (e.target === e.currentTarget) { setIsCreateModalOpen(false); handleRemovePhoto(); } }}>
           <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden animate-in zoom-in-95">
             <div className="p-6 border-b border-gray-100 bg-blue-50 flex justify-between items-center">
               <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2">
                 <Plus className="w-6 h-6 text-blue-600" />
                 New Floor Sample
               </h3>
-              <button onClick={() => { setIsCreateModalOpen(false); handleRemovePhoto(); }} className="text-gray-400 hover:text-gray-600 bg-white p-1.5 rounded-full shadow-sm border border-gray-100">
+              <button type="button" onClick={(e) => { e.preventDefault(); e.stopPropagation(); setIsCreateModalOpen(false); handleRemovePhoto(); }} className="text-gray-400 hover:text-gray-600 bg-white p-1.5 rounded-full shadow-sm border border-gray-100 transition-colors hover:bg-gray-100">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -434,6 +446,45 @@ export default function Admin() {
                 />
               </div>
               <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-1.5">Factory / Origin (Optional)</label>
+                <select
+                  value={createFormData.factory_id}
+                  onChange={e => setCreateFormData({ ...createFormData, factory_id: e.target.value })}
+                  className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl text-sm outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all"
+                >
+                  <option value="">Select factory (optional)...</option>
+                  {factoriesList.map((f: any) => (
+                    <option key={f.id} value={f.id}>{f.name}{f.code ? ` (${f.code})` : ''}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-1.5">Intended Receiver (Merchandiser) *</label>
+                <select
+                  value={createFormData.assigned_merchandiser_id}
+                  onChange={e => setCreateFormData({ ...createFormData, assigned_merchandiser_id: e.target.value })}
+                  className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl text-sm outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all"
+                >
+                  <option value="">Select merchandiser...</option>
+                  {merchandisersList.map((m: any) => (
+                    <option key={m.id} value={m.id}>{m.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-1.5">Purpose</label>
+                <select
+                  value={createFormData.purpose}
+                  onChange={e => setCreateFormData({ ...createFormData, purpose: e.target.value })}
+                  className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl text-sm outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all"
+                >
+                  <option value="ORDER_CONFIRMATION">Order Confirmation</option>
+                  <option value="STORAGE">Storage</option>
+                  <option value="EVALUATION">Evaluation</option>
+                  <option value="OTHER">Other</option>
+                </select>
+              </div>
+              <div>
                 <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-1.5">Sample Image</label>
                 <input
                   ref={photoInputRef}
@@ -467,14 +518,16 @@ export default function Admin() {
             </div>
             <div className="p-6 border-t border-gray-100 flex justify-end gap-3 bg-gray-50/50">
               <button
-                onClick={() => { setIsCreateModalOpen(false); handleRemovePhoto(); }}
+                type="button"
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); setIsCreateModalOpen(false); handleRemovePhoto(); }}
                 className="px-6 py-2.5 text-gray-600 font-bold hover:text-gray-900"
               >
                 Cancel
               </button>
               <button
-                onClick={() => createMutation.mutate(createFormData)}
-                disabled={createMutation.isPending || !createFormData.buyer_id || !createFormData.description}
+                type="button"
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); createMutation.mutate(createFormData); }}
+                disabled={createMutation.isPending || !createFormData.buyer_id || !createFormData.description || !createFormData.assigned_merchandiser_id}
                 className="px-8 py-2.5 bg-blue-600 text-white rounded-2xl font-bold shadow-lg shadow-blue-200 hover:bg-blue-700 disabled:opacity-50 transition-all active:scale-95"
               >
                 {createMutation.isPending ? 'Processing...' : 'Register Sample'}
@@ -486,7 +539,7 @@ export default function Admin() {
 
       {/* ENCODE MODAL */}
       {isEncodeModalOpen && selectedSample && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 animate-in fade-in duration-200" onMouseDown={(e) => { if (e.target === e.currentTarget) { setIsEncodeModalOpen(false); setEncodeRfid(''); } }}>
           <div className="bg-white rounded-3xl w-full max-w-sm shadow-2xl overflow-hidden animate-in zoom-in-95">
             <div className="p-6 border-b border-gray-100 bg-orange-50/50">
               <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2">
@@ -509,9 +562,10 @@ export default function Admin() {
               </div>
             </div>
             <div className="p-6 border-t border-gray-100 flex justify-end gap-3 bg-gray-50/50">
-              <button onClick={() => { setIsEncodeModalOpen(false); setEncodeRfid(''); }} className="px-6 py-2.5 text-gray-600 font-bold uppercase text-xs">Cancel</button>
+              <button type="button" onClick={(e) => { e.preventDefault(); e.stopPropagation(); setIsEncodeModalOpen(false); setEncodeRfid(''); }} className="px-6 py-2.5 text-gray-600 font-bold uppercase text-xs hover:text-gray-900">Cancel</button>
               <button
-                onClick={() => encodeMutation.mutate({ id: selectedSample.id, rfid_epc: encodeRfid })}
+                type="button"
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); encodeMutation.mutate({ id: selectedSample.id, rfid_epc: encodeRfid }); }}
                 disabled={encodeMutation.isPending || !encodeRfid}
                 className="px-8 py-2.5 bg-orange-600 text-white rounded-2xl font-bold shadow-lg shadow-orange-200 hover:bg-orange-700 disabled:opacity-50 transition-all"
               >
@@ -524,7 +578,7 @@ export default function Admin() {
 
       {/* TRANSFER MODAL */}
       {isTransferModalOpen && selectedSample && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 animate-in fade-in duration-200" onMouseDown={(e) => { if (e.target === e.currentTarget) { setIsTransferModalOpen(false); setTransferToUserId(''); setTransferNotes(''); } }}>
           <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden animate-in zoom-in-95">
             <div className="p-6 border-b border-gray-100 bg-blue-50/50 flex justify-between items-center">
               <div>
@@ -535,8 +589,9 @@ export default function Admin() {
                 <p className="text-xs text-gray-500 mt-1">Handoff <span className="font-mono font-semibold">{selectedSample.sample_id}</span> to another user.</p>
               </div>
               <button
-                onClick={() => { setIsTransferModalOpen(false); setTransferToUserId(''); setTransferNotes(''); }}
-                className="text-gray-400 hover:text-gray-600 bg-white p-1.5 rounded-full shadow-sm border border-gray-100 transition-colors"
+                type="button"
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); setIsTransferModalOpen(false); setTransferToUserId(''); setTransferNotes(''); }}
+                className="text-gray-400 hover:text-gray-600 bg-white p-1.5 rounded-full shadow-sm border border-gray-100 transition-colors hover:bg-gray-100"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -579,13 +634,15 @@ export default function Admin() {
             </div>
             <div className="p-6 border-t border-gray-100 flex justify-end gap-3 bg-gray-50/50">
               <button
-                onClick={() => { setIsTransferModalOpen(false); setTransferToUserId(''); setTransferNotes(''); }}
+                type="button"
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); setIsTransferModalOpen(false); setTransferToUserId(''); setTransferNotes(''); }}
                 className="px-6 py-2.5 text-gray-600 font-bold hover:text-gray-900 transition-colors"
               >
                 Cancel
               </button>
               <button
-                onClick={() => transferMutation.mutate({ id: selectedSample.id, to_user_id: transferToUserId, reason: transferNotes, rfid_epc: selectedSample.rfid_epc || '' })}
+                type="button"
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); transferMutation.mutate({ id: selectedSample.id, to_user_id: transferToUserId, reason: transferNotes, rfid_epc: selectedSample.rfid_epc || '' }); }}
                 disabled={transferMutation.isPending || !transferToUserId || !transferNotes.trim()}
                 className="px-8 py-2.5 bg-blue-600 text-white rounded-2xl font-bold shadow-lg shadow-blue-200 hover:bg-blue-700 disabled:opacity-50 transition-all active:scale-95"
               >
@@ -598,7 +655,7 @@ export default function Admin() {
 
       {/* STORE MODAL */}
       {isStoreModalOpen && selectedSample && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 animate-in fade-in duration-200" onMouseDown={(e) => { if (e.target === e.currentTarget) { setIsStoreModalOpen(false); setStoreLocationId(''); } }}>
           <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden animate-in zoom-in-95">
             <div className="p-6 border-b border-gray-100 bg-emerald-50/50 flex justify-between items-center">
               <div>
@@ -609,8 +666,9 @@ export default function Admin() {
                 <p className="text-xs text-gray-500 mt-1">Finalizing storage for <span className="font-mono font-semibold">{selectedSample.sample_id}</span></p>
               </div>
               <button
-                onClick={() => { setIsStoreModalOpen(false); setStoreLocationId(''); }}
-                className="text-gray-400 hover:text-gray-600 bg-white p-1.5 rounded-full shadow-sm border border-gray-100 transition-colors"
+                type="button"
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); setIsStoreModalOpen(false); setStoreLocationId(''); }}
+                className="text-gray-400 hover:text-gray-600 bg-white p-1.5 rounded-full shadow-sm border border-gray-100 transition-colors hover:bg-gray-100"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -648,13 +706,15 @@ export default function Admin() {
             </div>
             <div className="p-6 border-t border-gray-100 flex justify-end gap-3 bg-gray-50/50">
               <button
-                onClick={() => { setIsStoreModalOpen(false); setStoreLocationId(''); }}
+                type="button"
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); setIsStoreModalOpen(false); setStoreLocationId(''); }}
                 className="px-6 py-2.5 text-gray-600 font-bold hover:text-gray-900 transition-colors"
               >
                 Cancel
               </button>
               <button
-                onClick={() => storeMutation.mutate({ id: selectedSample.id, location_id: storeLocationId, rfid_epc: selectedSample.rfid_epc || '' })}
+                type="button"
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); storeMutation.mutate({ id: selectedSample.id, location_id: storeLocationId, rfid_epc: selectedSample.rfid_epc || '' }); }}
                 disabled={storeMutation.isPending || !storeLocationId}
                 className="px-8 py-2.5 bg-emerald-600 text-white rounded-2xl font-bold shadow-lg shadow-emerald-200 hover:bg-emerald-700 disabled:opacity-50 transition-all active:scale-95"
               >

@@ -59,7 +59,7 @@ $apiJob = Start-Job -ScriptBlock {
 }
 Start-Sleep -Seconds 3
 Write-Host "  ✅ API Server started (Job ID: $($apiJob.Id))" -ForegroundColor Green
-Write-Host "     Running at: http://localhost:3000" -ForegroundColor Cyan
+Write-Host "     Running at: http://localhost" -ForegroundColor Cyan
 
 # Step 6: Start Web Server
 Write-Host ""
@@ -79,7 +79,7 @@ Write-Host "   ✅ All services started successfully   " -ForegroundColor Green
 Write-Host "========================================" -ForegroundColor Green
 Write-Host ""
 Write-Host "Services running:" -ForegroundColor White
-Write-Host "  • API Server:  http://localhost:3000" -ForegroundColor Cyan
+Write-Host "  • API Server:  http://localhost" -ForegroundColor Cyan
 Write-Host "  • Web App:     http://localhost:5173" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "Job IDs:" -ForegroundColor White

@@ -36,7 +36,7 @@ export class SampleLifecycleService {
                 data: {
                     sample_id: nextSampleId,
                     entry_number: nextEntryNumber,
-                    buyer_id: data.buyer_id || '',
+                    buyer_id: data.buyer_id,
                     sample_type: data.sample_type,
                     description: data.description,
                     sender_origin: data.sender_origin,

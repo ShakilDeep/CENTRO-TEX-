@@ -53,10 +53,12 @@ Write-Host "  ✅ Prisma Client generated" -ForegroundColor Green
 # Step 5: Start API Server
 Write-Host ""
 Write-Host "[5/6] Starting API Server..." -ForegroundColor Yellow
+$apiPath = "$PSScriptRoot\apps\api"
 $apiJob = Start-Job -ScriptBlock { 
-    Set-Location "F:\CENTRO TEX 2.0\apps\api"
+    param($p)
+    Set-Location $p
     npm run dev
-}
+} -ArgumentList $apiPath
 Start-Sleep -Seconds 3
 Write-Host "  ✅ API Server started (Job ID: $($apiJob.Id))" -ForegroundColor Green
 Write-Host "     Running at: http://localhost" -ForegroundColor Cyan
@@ -64,10 +66,12 @@ Write-Host "     Running at: http://localhost" -ForegroundColor Cyan
 # Step 6: Start Web Server
 Write-Host ""
 Write-Host "[6/6] Starting Web Server..." -ForegroundColor Yellow
+$webPath = "$PSScriptRoot\apps\web"
 $webJob = Start-Job -ScriptBlock { 
-    Set-Location "F:\CENTRO TEX 2.0\apps\web"
+    param($p)
+    Set-Location $p
     npm run dev
-}
+} -ArgumentList $webPath
 Start-Sleep -Seconds 3
 Write-Host "  ✅ Web Server started (Job ID: $($webJob.Id))" -ForegroundColor Green
 Write-Host "     Running at: http://localhost:5173" -ForegroundColor Cyan

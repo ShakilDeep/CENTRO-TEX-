@@ -8,7 +8,7 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: 'http://127.0.0.1:80',
+        target: 'http://127.0.0.1:3001',
         changeOrigin: true,
         configure: (proxy, options) => {
           proxy.on('error', (err, _req, res) => {
@@ -21,7 +21,7 @@ export default defineConfig({
         }
       },
       '/auth': {
-        target: 'http://127.0.0.1:80',
+        target: 'http://127.0.0.1:3001',
         changeOrigin: true,
         configure: (proxy, _options) => {
           proxy.on('error', (err, _req, res) => {
@@ -33,11 +33,11 @@ export default defineConfig({
         }
       },
       '/health': {
-        target: 'http://127.0.0.1:80',
+        target: 'http://127.0.0.1:3001',
         changeOrigin: true
       },
       '/sso': {
-        target: 'http://127.0.0.1:80',
+        target: 'http://127.0.0.1:3001',
         changeOrigin: true
       },
     },

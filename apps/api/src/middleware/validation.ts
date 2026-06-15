@@ -45,9 +45,9 @@ export const ssoCallbackSchema = {
 
 export const createSampleSchema = {
   type: 'object',
-  required: ['sample_type', 'description'],
+  required: ['buyer_id', 'sample_type', 'description'],
   properties: {
-    buyer_id: { type: 'string' },
+    buyer_id: { type: 'string', minLength: 1 },
     sample_type: { type: 'string', minLength: 1 },
     description: { type: 'string', minLength: 1 },
     photo_url: { type: 'string' },

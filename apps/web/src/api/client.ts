@@ -148,12 +148,16 @@ class ApiClient {
         return 'The requested resource was not found.';
       case 409:
         return 'Conflict with existing data.';
+      case 413:
+        return 'Image is too large. Please use a smaller photo.';
       case 422:
         return 'Validation error. Please check your input.';
       case 429:
         return 'Too many requests. Please try again later.';
       case 500:
         return 'Server error. Please try again later.';
+      case 502:
+        return 'API server is offline. Please start the backend and try again.';
       default:
         return 'An unexpected error occurred.';
     }

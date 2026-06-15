@@ -28,6 +28,11 @@ export interface CreateSampleRequest {
   sample_type: string;
   description: string;
   photo_url?: string;
+  factory_id?: string;
+  assigned_merchandiser_id?: string;
+  purpose?: string;
+  sender_origin?: string;
+  receiver_name?: string;
 }
 
 export interface DisposeSampleRequest {
@@ -48,7 +53,7 @@ export const samplesApi = {
   },
 
   create: async (data: CreateSampleRequest): Promise<ApiResponse<Sample>> => {
-    const response = await api.post('/api/v1/samples', data);
+    const response = await api.post('/api/v1/samples', data, { timeout: 30000 });
     return response.data;
   },
 

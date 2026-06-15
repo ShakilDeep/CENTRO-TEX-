@@ -9,6 +9,8 @@ import { useNavigate } from 'react-router-dom';
 import { dispatchApi, samplesApi, transfersApi, storageApi, api } from '../api';
 import type { Sample } from '../api/samples';
 import { useToastActions } from '../stores/uiStore';
+import { compressImage } from '../utils/compressImage';
+import { buildCreateSamplePayload } from '../utils/samplePayload';
 
 // ─── Status badge ────────────────────────────────────────────────────────────
 const STATUS_COLORS: Record<string, string> = {
@@ -119,9 +121,9 @@ export default function Dispatch() {
 
     // ST-DISP-001: Create sample with factory + merchandiser linkage
     const createMutation = useMutation({
-        mutationFn: (d: typeof INIT_CREATE) => samplesApi.create(d),
+        mutationFn: (d: typeof INIT_CREATE) => samplesApi.create(buildCreateSamplePayload(d)),
         onSuccess: () => { invalidate(); setShowCreateModal(false); setCreateForm(INIT_CREATE); handleRemovePhoto(); addToast({ type: 'success', title: 'Sample Created', message: 'Sample registered and merchandiser notified.' }); },
-        onError:   (e: any) => addToast({ type: 'error', title: 'Creation Failed', message: e?.response?.data?.message || e.message }),
+        onError:   (e: any) => addToast({ type: 'error', title: 'Creation Failed', message: e.message || e?.response?.data?.message || 'Failed to create sample' }),
     });
 
     // ─── Helpers ──────────────────────────────────────────────────────────────
@@ -146,12 +148,17 @@ export default function Dispatch() {
         if (type === 'reassign') setShowReassignModal(true);
     };
 
-    const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handlePhotoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
-        const reader = new FileReader();
-        reader.onloadend = () => { const r = reader.result as string; setPhotoPreview(r); setCreateForm(p => ({ ...p, photo_url: r })); };
-        reader.readAsDataURL(file);
+        try {
+            const compressed = await compressImage(file);
+            setPhotoPreview(compressed);
+            setCreateForm(p => ({ ...p, photo_url: compressed }));
+        } catch {
+            addToast({ type: 'error', title: 'Image Error', message: 'Could not process the selected image. Try a smaller file.' });
+            handleRemovePhoto();
+        }
     };
 
     const handleRemovePhoto = () => {

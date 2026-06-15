@@ -10,6 +10,8 @@ import type { Sample } from '../api/samples';
 import { useAuthStore } from '../stores/authStore';
 import { useToastActions } from '../stores/uiStore';
 import { useNavigate } from 'react-router-dom';
+import { compressImage } from '../utils/compressImage';
+import { buildCreateSamplePayload } from '../utils/samplePayload';
 
 const ACTIONABLE_STATUSES = ['IN_TRANSIT_TO_DISPATCH', 'AT_DISPATCH', 'WITH_MERCHANDISER', 'IN_STORAGE'];
 
@@ -60,16 +62,17 @@ export default function Admin() {
   const queryClient = useQueryClient();
   const { addToast } = useToastActions();
 
-  const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePhotoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      const result = reader.result as string;
-      setPhotoPreview(result);
-      setCreateFormData(prev => ({ ...prev, photo_url: result }));
-    };
-    reader.readAsDataURL(file);
+    try {
+      const compressed = await compressImage(file);
+      setPhotoPreview(compressed);
+      setCreateFormData(prev => ({ ...prev, photo_url: compressed }));
+    } catch {
+      addToast({ type: 'error', title: 'Image Error', message: 'Could not process the selected image. Try a smaller file.' });
+      handleRemovePhoto();
+    }
   };
 
   const handleRemovePhoto = () => {
@@ -121,7 +124,7 @@ export default function Admin() {
 
   // Mutations
   const createMutation = useMutation({
-    mutationFn: (data: any) => samplesApi.create(data),
+    mutationFn: (data: typeof createFormData) => samplesApi.create(buildCreateSamplePayload(data)),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-samples-queue'] });
       setIsCreateModalOpen(false);
@@ -129,7 +132,7 @@ export default function Admin() {
       handleRemovePhoto();
       addToast({ type: 'success', title: 'Success', message: 'Sample created successfully. Now encode RFID.' });
     },
-    onError: (err: any) => addToast({ type: 'error', title: 'Creation Failed', message: err.response?.data?.message || err.message })
+    onError: (err: any) => addToast({ type: 'error', title: 'Creation Failed', message: err.message || err.response?.data?.message || 'Failed to create sample' })
   });
 
   const encodeMutation = useMutation({

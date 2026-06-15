@@ -18,7 +18,8 @@ import path from 'path';
 const server: FastifyInstance = Fastify({
   logger: {
     level: process.env.LOG_LEVEL || 'info'
-  }
+  },
+  bodyLimit: 10 * 1024 * 1024 // 10 MB — sample photos are sent as base64 in JSON
 });
 
 async function start() {

@@ -16,6 +16,22 @@ export default async function samplesRoutes(fastify: FastifyInstance) {
               purpose, factory_id, assigned_merchandiser_id } = request.body as any;
 
       // Dispatch role must always specify a target merchandiser
+      if (!buyer_id) {
+        return reply.code(400).send({ error: 'Bad Request', message: 'buyer_id is required' });
+      }
+
+      const buyer = await prisma.buyers.findUnique({ where: { id: buyer_id } });
+      if (!buyer) {
+        return reply.code(400).send({ error: 'Bad Request', message: 'Invalid buyer_id' });
+      }
+
+      if (factory_id) {
+        const factory = await prisma.factories.findUnique({ where: { id: factory_id } });
+        if (!factory) {
+          return reply.code(400).send({ error: 'Bad Request', message: 'Invalid factory_id' });
+        }
+      }
+
       if (user.role === 'DISPATCH' && !assigned_merchandiser_id) {
         return reply.code(400).send({ error: 'Bad Request', message: 'assigned_merchandiser_id is required for Dispatch role' });
       }

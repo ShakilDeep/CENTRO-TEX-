@@ -8,7 +8,7 @@
     "apps/web"
   ],
   "scripts": {
-    "dev": "npm --workspace=apps/api run dev & npm --workspace=apps/web run dev",
+    "dev": "concurrently \"npm --workspace=apps/api run dev\" \"npm --workspace=apps/web run dev\"",
     "build": "npm --workspace=apps/api run build && npm --workspace=apps/web run build",
     "start": "npm --workspace=apps/api run start",
     "test": "npm --workspace=apps/api run test",
